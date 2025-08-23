@@ -1336,6 +1336,47 @@ Populate the BOMAlternative for the Phantom parts to match their parent's BOMAlt
 
 ````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
+Article Summary
+When the expiry type is set to Self/SelfReset is it also mandatory to have the Intervals To Expiry (ITE) as advised, where the assembly ITE takes component ITE and decrements the Lead time?
+
+Article Resolution
+Yes if PrePlan is enabled (AbsPPL<>0). When expiry and preplan are enabled, ITE should be set much bigger than AbsPPL regardless of ExpiryType. In this case the default ITE which is 0 will very likely cause issues.
+
+``````````````````````````````````````````````````````````````````````````````````````````
+A Part without any valid PartSource is ignored by the core algorithms. It is equivalent to setting the Part.Type.ProcessingRule = Ignore.
+
+2
+A Make or Transfer PartSource at the bottom level of the product structure is automatically treated as a Buy PartSource. If a PartSource cannot generate a dependent demand due to a misconfiguration, RapidResponse assumes that the PartSource represents buying from a supplier and thus has no dependent requirement.
+
+``````````````````````````````````````````````````````````````````````````````````````````````
+
+Best Practice: Be cautious when using PartSource.MaximumQty to avoid high CPO count per part
+
+When RapidResponse stores calculated results in the algorithm cache, each calculated planned order (CPO) is stored individually. This means that 10 CPOs of 100 units each with the same DueDate occupies 10 times the memory compared to 1 CPO of 1,000 units. Core algorithm run time also increases by the same factor. In other words, higher CPO count leads to slower system performance.
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+Tip:
+Perform data changes in a private scenario
+
+In a previous lesson, you learned that any data changes, such as inserts, deletions, and modifications, can invalidate cached algorithm results. After a cache invalidation occurs, the algorithms have to recalculate planning results when the next data read is performed. 
+
+In a standard user environment, there can be many users performing data reads in key shared scenarios frequently throughout the day. When algorithm results are cached and data reads occur, the system is fast and users retrieve planning results quickly. However, if a user or automation chain is performing data changes in the same shared scenario as other users performing data reads, the system can be much slower to retrieve planning results. As the cache can be invalidated from the data changes and the algorithms need to recalculate planning results before users are able to view them.
+
+This means:
+
+•
+For interactive simulations, users should create a child scenario and perform their data changes within it.
+
+•
+For automation chain design, the chain should start by creating a temporary child scenario, then perform the data changes in that child scenario.
+
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
+
 
 
 
