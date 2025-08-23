@@ -1,48 +1,49 @@
-import re
-import pathlib
 import streamlit as st
+from openai import OpenAI
+import os
 
-st.set_page_config(page_title="Article Search", layout="wide")
-st.title("📄 Article Search (Shared File)")
+# Load OpenAI API key (set it as a Streamlit secret in cloud)
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# 1) Read your shared file that sits in the same repo
-FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
-if not FILE_PATH.exists():
-    st.error("❌ 'articles.txt' not found in the repo (same folder as streamlit_app.py).")
-    st.stop()
+# --- Load your articles file ---
+@st.cache_data
+def load_articles():
+    with open("articles.txt", "r", encoding="utf-8") as f:
+        text = f.read()
+    # Split articles by separators
+    import re
+    articles = re.split(r"[-=]{5,}|`{5,}", text)
+    return [a.strip() for a in articles if a.strip()]
 
-text = FILE_PATH.read_text(encoding="utf-8")
+articles = load_articles()
 
-# 2) Split into articles by your delimiters: ```````````, ==========, -------
-articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-articles = [a.strip() for a in articles if a.strip()]
+# --- Streamlit UI ---
+st.title("📖 Article Q&A App")
+st.write("Ask questions, and the app will answer based on `articles.txt`.")
 
-st.success(f"Loaded {len(articles)} articles from your shared file.")
+user_q = st.text_input("Enter your question:")
 
-# 3) Search box
-query = st.text_input("🔎 Enter keywords (case-insensitive):").strip()
+if user_q:
+    # 1. Create context by concatenating all articles (for small file)
+    # For large files, you'd use embeddings search
+    context = "\n\n".join(articles)
 
-def highlight(snippet: str, q: str) -> str:
-    if not q:
-        return snippet
-    # simple case-insensitive bold highlight
-    pattern = re.compile(re.escape(q), re.IGNORECASE)
-    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
+    # 2. Ask GPT with context
+    prompt = f"""
+You are a helpful assistant. Answer the question using the text below.
+If the answer is not found, say 'I don't know based on the articles.'
 
-if query:
-    # 4) Keyword search
-    matched = []
-    qlower = query.lower()
-    for i, article in enumerate(articles, start=1):
-        if qlower in article.lower():
-            matched.append((i, article))
+Articles:
+{context}
 
-    if matched:
-        st.subheader(f"Search Results ({len(matched)})")
-        for idx, (art_no, body) in enumerate(matched, start=1):
-            with st.expander(f"Result {idx} (Article {art_no})"):
-                st.markdown(highlight(body, query))
-    else:
-        st.warning("No results found. Try a different word.")
-else:
-    st.info("Type something above to search your shared knowledge base.")
+Question: {user_q}
+Answer:
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",  # cheaper, faster ChatGPT
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    st.write("### Answer:")
+    st.write(response.choices[0].message.content)
