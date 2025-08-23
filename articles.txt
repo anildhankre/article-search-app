@@ -1,1 +1,1344 @@
+Keyless table
+Beginning in H2201, all keyless tables in the standard Mfg namespace, as listed below, can optionally be configured to have key fields. These tables, as well as standard tables that contain vector table, are the only standard RapidResponse tables that you can add or modify key fields for.  Previously this could only be done for four specific keyless tables (Allocation, BillOfMaterial, OnHand, and Operation).
+ 
+
+Keyless tables in Mfg namespace:
+Allocation
+AlternateRouting
+BaselinePlannedOrder
+BillOfMaterial
+Capacity
+CollaborativeForecast
+ConstraintAvailable
+HistoricalPartKPI
+Operation
+OnHand
+PoolMap
+PoolMapOverride
+ProductionGroupRelationship
+TimePhasedSafety
+ToleranceProfileZone
+
+
+
+Issue:The DataUpdate process is continuously pulling previously processed data, while new data from the Extract folder is not being processed.
+Cause
+Files remained in the 'Working' folder, preventing proper processing.
+The system continued to pick up and move old files to history, leading to repeated failures and data inconsistencies.
+The Working folder did not clear automatically, causing the DataUpdate process to reuse previous data.
+
+
+
+`````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+When processing multiple files across Data Sources that update a specific table in a single Data Update task, there is an order of processing which then determines which records are considered duplicated and are rejected.
+
+The processing steps are as follows:
+
+Move all Data Source folders to \Working directory.
+Begin processing Tables in priority order.
+If multiple files update a specific table, the data source that comes first alphabetically is matched and processed. Subsequent files that modify that table will be considered duplicates
+For example, hen the Data Update begins updating the ReferencePart table, it processes the contents of the ReferencePart.txt file from the DataSource_A data source, then moves on to processing the ReferencePart_A.txt file in the DataSource_B data source. When the Data Update is processing the contents of the ReferencePart_A.txt file, it sees that the recordIDs have already been scanned for changes, and then considers each individual record as duplicates.
+If there was a new record in the ReferencePart_A.txt file, it would insert the record in the ReferencePart table, provided auto-creation of records is allowed.
+If each data source file had separate recordIds, ie: reference parts a-z in one file and reference parts aa-zz in another file, all records would be updated, as the contents of the files are unique to the data source. 
+
+``````````````````````````````````````````````````````````````````````````````````
+
+
+
+
+Article Summary
+What is the correct setup to ensure that each data source has its own data update job, where each job runs specifically for its assigned data source and only imports data for that source?
+
+Article Resolution
+When any data update task is run, it will process all files in the Extract folder, regardless of their data source, and ingests the data into the mapped locations.
+
+To achieve a different data update task for each individual data source, only the data files associated with the specific data source for the next data update task can be sent for consumption. Otherwise, any remaining files for future updates would be ignored because the system would consider the folder as already processed, treating those files as outdated.
+
+For example:
+
+Send files only for Data Update Task 1.
+Once Task 1 completes, send files only for Data Update Task 2.
+After Task 2 completes, send files only for Data Update Task 3, and so on.
+This approach ensures the correct files are used for the corresponding tasks. However, it requires significant planning and testing to determine the timing of each step and avoid overlap between updates.
+
+If assistance is needed, reach out to your Account Manager to discuss involving our Professional Services team for help with redesigning the solution.
+
+Alternatively, you may want to submit an enhancement request detailing how you would like the data update process to work.  Before creating a new request, check to ensure a similar request has not already been submitted. 
+
+
+```````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+We need to update some parts, but the information is not contained in one file. The data is in two files, in different data sources. Is it possible to update the same parts, using these files, from two different data sources?
+
+Article Resolution
+Updating the same part from two different data sources, using Data Updates, will not work. When the second file is consumed, it will change the values the first file inserted.
+
+ 
+
+However, you can use a join file to update the Part fields that are not in the first file. The file Join must be in the same data source that the first file referenced. Then, create a custom table to load the data from the second .tab file and use transformations in down stream scenario to update the part table.
+
+
+
+``````````````````````````````````````````````````````````````````````````````````````````
+
+Configuring Tables to Allow Insert and Modify on Data Update
+Applicable To: All Releases
+ 
+
+Synopsis
+For some tables in RapidResponse, it is recommended to configure them to only allow insert and modify during the Data Update process, instead of insert, modify and delete, in order to prevent data from being deleted.  
+
+Typically, these are tables used to store historical data, and we want to keep previously loaded data.  In addition, some tables not used to store historical data, such as Part and PartCustomer, are required for historical data to persist and should be configured to insert and modify only to avoid unintentional cascading deletes.  This configuration is done by a data or system administrator user, who has the authorization to modify the integration settings of the system.
+
+``````````````````````````````````````````````````````````````````````````````````````````
+
+Preventing and Recovering from Accidental Record Deletions
+ 
+Applicable to: All Releases
+ 
+
+Synopsis
+The best practice is to put procedures in place to prevent accidental data deletion, and to respond to the situation where data recovery may be required. Recovering from accidental record deletions in the RapidResponse database is very difficult because it's a versioned database and changes are tracked per scenario. Deletions are hard to diagnose, and the recovery process is tedious and disruptive. The best remedy is prevention.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Symptom
+Data in table  abc and xyz  was loaded as part of data update, when another file for table lmn containing reference to abc and xyz are loaded data droppages are observed saying abc and xyz is not available even though it got loaded in the same data update.
+
+Cause
+RapidResponse updates data based on the design of the data model. Table lmn was handled prior to tables abc and xyz, pertaining to the stated issue. Since table lmn is processed first, it searches for related values in tables abc and xyz, which are absent until values in tables abc and xyz are processed.
+
+
+
+
+````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Field was removed from Data Sources and Mapping Workbook to stop updates from occurring on that field.
+Data for the field, in RapidResponse, is now getting zeroed out each time a Data Transfer is done, instead of the values staying the same from the last data update with it mapped.
+ 
+
+CAUSE:
+
+Whether a field has been mapped and removed or never mapped at all, RapidResponse will treat it the same. RapidResponse will determine what value it should use for that field that is not mapped. It will look to see if there is a default value set. If there is no default value, then it will zero it out.
+
+Article Resolution
+If the data is saved in a Historical scenario...
+
+ 
+
+Commit the data from the Historical scenario to Approved Actions, which is where that field's data will be maintained.
+
+ 
+
+Since that field's data will be zeroed out in Enterprise Data, it will not see any differences from what is in the data file, so it will not push any changes down to Approved Actions, leaving the data in Approved Actions alone.
+
+ 
+
+The only problem will be when/if there are differences, for existing records, in the data file and Enterprise Data. When this happens, it will update the record in Enterprise Data and push that changed record down to Approved Actions, which will zero out that field. To prevent this, set up a process that will update that fields values in Approved Actions, in case any records get zeroed out, due to a record update in Enterprise Data.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+During a DataUpdate, records were deleted in a table as they were not included in the Data Update files. However, the records in other tables that refer to the deleted records did not generate missing reference errors. Why?
+
+Article Resolution
+There is an order of operations that DataUpdate task goes through.
+
+Inserts and Modifies.  Before a record can be inserted or modified it will need to resolve references.
+Resolve references: There are some subtle things how reference fields are treated related to the properties of the reference field: 'Allow null reference', 'Retain records in this table when a referenced record is deleted". And also how null references are resolved (ie. DataUpdate.ExtractNullRef.UseAllKeys)
+Deletes. Records with the same Core::OriginatingFile value, which were not seen in the extract .tab file, will get deleted.
+It is important to note that DataUpdate processes the deletes last (after the inserts and modifies). Therefore, technically the record(s) is still present to allow the reference until the very end of the DataUpdate task.
+
+````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Manual Pooling\Pooled Batches are being deleted when keying the OnHand table and running an update task, if non-key fields are placed before key fields. This requires rearranging fields in every instance where the OnHand table is used. This article explains the necessity of key/non-key field arrangement and provides an alternative if keying the OnHand table is not ideal for your scenario.
+
+ 
+
+Cause
+The issue arises because keying the OnHand table globally impacts processes like the update task, requiring that key fields are ordered before non-key fields. When the OnHand table is unkeyed, the arrangement of fields does not matter. However, after keying the table (e.g., using fields such as Batch, Basekey, Location, Model, Part, and Type), the system expects key fields to precede non-key fields, which can impact downstream tasks and may lead to errors if the arrangement is not adjusted across all workbooks.
+
+Article Resolution
+Key/Non-Key Field Arrangement:
+This keying requirement is global, meaning it affects both the update task and related processes. Ensure that, in any instance where the OnHand table is used, you arrange key fields before non-key fields to avoid issues during task execution.
+
+ 
+
+Alternative Solution Without Keying the OnHand Table:
+If keying the OnHand table does not suit your needs, you can use an alternative approach to manage record updates:
+
+Create a Post-Data Update Process: Set up a process to update the Pool reference back to the last known value before records flow into the planning scenario.
+Compare Records Using Specific Fields: Use fields such as Basekey, Batch, Location, Model, Part, and Type for record comparison to ensure data accuracy without the need for keying.
+Implement Custom Process: This alternative requires a custom process to manage records without depending on key fields in the OnHand table.
+ 
+
+If you need assistance with this setup or require further clarification, contact Kinaxis Customer Support.
+
+ 
+
+Additional Information:
+ 
+
+For unkeyed tables like the OnHand table, records may be deleted and re-created during data updates, especially if the Date field is modified. This can result in manual allocations being unpooled, as observed by a customer whose data became unpooled after weekend reinitializations. A custom solution to maintain record consistency across updates may help retain pooled allocations.
+
+`````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+RapidResponse 2014.4 introduced vector series data in standard and custom tables. If you are using a RapidResponse H Service Update, you cannot convert tables to contain vector data, and you must apply the vector conversion before migrating to the RapidResponse H architecture. Converted tables must contain key fields and uniquely identify records.
+
+ 
+
+You might see the "Key Field" option is greyed out while trying to perform this conversion process:
+
+ 
+
+image.png
+
+Article Resolution
+This option will remain greyed out till the vectorization is applied. Before implementation of vectorization, you must determine whether adding key fields to the table results in duplicate key values. If yes, those should be either merged or cleaned up. After the Vector implementation, you will then have that option (key field) available to select.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+While configuring RapidResponse to auto create records may seem to be an easy and helpful process, it can have some serious consequences and should be done sparingly.  Tables that allow auto create can grow quite large over time and severely impact system performance.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+What is the maximum number of keys allowed for a table in data model?
+
+Article Resolution
+The maximum number of key fields allowed for a table is 8. 
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+While trying to test data update, we hit an error on the Part Table - getting message, "Ignoring Field Mfg::Part.Name from extractbecause it is ambiguous. Mfg::Part has multiple fields with different namespace with that name. Is this a softwarebug?
+
+Answer: My guess is that someone has added another Part.Name field, using another namespace in your RapidResponse instance. So, try Mfg::Part.Mfg::Name to completely specify the table and field.
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+A Scheduled task is failing because a dependent scheduled task cannot update the records. The encountered error message is below: 
+
+Cannot resolve reference field *** in column '***' to database 
+table *** with key Value='***
+
+Cause
+This issue may have been caused by a scheduled task containing an incorrect workbook reference. For example, if the workbook was updated, but the scheduled task was not refreshed to reflect the update, it is possible that it could still be using outdated information.
+
+In this instance, the execution did not produce the desired outcome. However, after reviewing the task and making minor adjustments, the private task was successfully executed.
+ 
+Article Resolution
+Complete the following steps to resolve this issue:
+
+Check out the scheduled task that is having trouble with updating records 
+Revise/Update the author's notes
+Save the scheduled task and check it back in. 
+The scheduled task will execute correctly with the correct context.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+When adding a custom field to an existing vector table or extending fields through a custom namespace, a live transform did not apply the data model changes.
+
+ 
+
+Cause:
+A restart is always required for existing vector tables or when extending fields through a custom namespace. Live transform does not support vector tables and fields and is not possible in these situations.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Data update failed in HistoricalDemandHeader
+and HistoricalDemandSeries table
+Hi All,
+
+ 
+
+I am trying to do data update in HistoricalDemandSeries,HistoricalDemandHeader table
+
+by setting data sources and mapping. But no data is getting inserted into the table as well as not getting any error. Even the file is not getting generated
+
+resolution: The fields in HistoricalDemandHeader are Category and PartCustomer. These fields in turn reference to the tables HistoricalDemandCategory and PartCustomer respectively. And PartCustomer has reference to Customer.
+
+ 
+
+We should make sure you have the values setup in the reference tables, before inserting record into HistoricalDemandHeader table. Or alternatively you may try to set the AutoCreate parameter to 'Yes' in Datasources & Mapping.
+
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Vector sets cannot contain Notes or Set fields, which means other tables cannot contain references to the vector set. In addition, perspectives cannot be applied to the vector data.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````
+Notes Field 
+Notes tables are responsible for storing note data. Note data includes a timestamp, a user ID, and a value
+
+
+The following RapidResponse tables have Note fields
+
+EngineeringChange
+ForecastItemParametersOutlier
+IndependentDemand
+ScheduledReceipt
+SupplyAllocation
+SupplyOrder
+Task
+When a note value is entered into a Note field located in one of these tables, RapidResponse creates a note record and stores it in the corresponding Note table. For example, when a note is created for the IndependentDemand.Notes field, RapidResponse creates a note record and stores it in the IndependentDemand_Notes table
+
+ 
+
+Notes field in Custom Table
+If a Note field is added to a custom table, then RapidResponse creates a corresponding Note table. For example, assume a Note field named Notes is added to a custom table named Location. The name of the corresponding note table that gets created is Location_Notes. 
+
+
+
+`````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+When trying to get the results from dependent consensus forecast, by making an adjustment in the consensus demand workbook (using forecast detail table) the dependent forecast only gets calculated the first time an update is made at the assembly, generating dependent forecast for the components, but the second (or any other change) time, the system won't update the calculated table.
+
+ 
+
+DependentConsensusForecast table
+
+ 
+
+Cause
+ 
+
+Kinaxis has identified this issue as a defect in the current version of the software
+
+When we make adjustments to ConsensusForecast for parent Assembly in a BOM relationship, the changes reflect on Component in *DependentConsensusForecast *for the first time. In the successive attempts, these adjustments don't reflect on the component.
+ 
+
+Article Resolution
+Applying one of the Service Updates (listed below) for your version of Kinaxis Maestro (formerly RapidResponse) resolves this issue.
+
+Available updates for all versions of Maestro can be found by selecting your version from the Downloads page (https://knowledge.kinaxis.com/s/downloads).
+Available updates for all Predefined Resources (PDR's) can be found within your Maestro version as a file attachment.
+
+
+KINAXIS MAESTRO VERSION: TBD
+SERVICE UPDATE STATUS: TBD
+
+ 
+
+Suggested workaround
+
+The workbook created is based on DependentConsensusForecast table.  This table is calculated based on Forecast Details and Consensus Forecasts. There is no dependency on these results by any other planning therefore they are generated once and left as-is.
+
+To see the results you have to clear the cache each time you make a change. You can implement a workbook command or a script to clear the cache. It is recommended to clear the cache only after making all changes you plan to make and perform this operation as few times as possible.
+
+ 
+
+In broad terms:
+
+Create a 'dummy' worksheet in your private workbook.
+Use the 'dummy' worksheet create a new command to modify records.
+Add the 'dummy' table to the 'Control Tables' workbook, 'Part Type' worksheet.
+Make your planner overrides in the customer workbook.
+Run the command to see the changes in your custom workbook.
+ Create new dummy worksheet
+
+Create a new worksheet in your custom workbook
+
+Name: ‘dummy’
+
+Table: PartType
+
+ 
+
+In the columns tab add key fields ‘ControlSet’ and ‘Value’, add field ‘Description’ and new column ‘NewDescription’
+
+In the data tab enter these expressions or use the ‘expression builder’ button.
+
+Control Set>                    Expression: ControlSet.Value
+
+Value>                               Expression: Value
+
+Description>                    Expression: description
+
+NewDescripition >          Expression: Text(NUMERICVALUE(Description)+1)
+
+ 
+
+The expression in the ‘dummy -worksheet properties’ is a counter for the NewDescription Column
+
+In the ‘Contro Tables’ add a new record for the ‘dummy’ worksheet and enter a numerical value in the description
+
+ In the ‘Data Options’ tab check the option ‘Override default data editing permission for the ‘Control set’ and ‘Value’ columns.
+
+ Modify worksheet data commands to include the dummy table
+
+ 
+
+Reported Version
+H2408.1
+Reference Code
+RRP-225466
+
+
+
+
+
+```````````````````````````````````````````````````````````````````````````````````````````
+
+Data Update failing with "The data update has failed with return code: -102"
+Article Summary
+You will see the data update failing with the following errors in the Data Import and Update log :
+
+Unable to commit the data update working scenario () after a successful data update. Return code = 23
+
+The data update has failed with return code: -102
+Wrap Text
+
+Active
+
+KB.png
+
+ 
+
+Cause:
+Too many sites are being inserted/modified exceeding the licensed amount. Typically this is caused by Auto-Created records or if the LicenseType field on the Site table is not defined in DataSource and Mapping, it will supply a default value of Physical.
+
+Note: Best practice is to avoid auto-creating site records as they are under licensing. The license violation error is only for the root (Enterprise Data) scenario.
+
+Article Resolution
+Auto-Created Record Issue:
+
+Compare the "Total Records in Table" for table "Site" in "Record Count by Table" worksheet (Data Import and Update Log workbook) with the total licensed sites. 
+Determine the auto-created fields and the associated data file using the example below and ensure that the Site table does not allow auto-created records or that the records being supplied contain the expected data
+
+
+
+Default Site Issue:
+
+The DataUpdate will show that records had been inserted/modified and Data Source and Mapping have nothing defined for the 'LicenseType' field on the 'Site' table:image.png
+This field will need to be configured in Data Source and Mapping for the extract file updating the Site table; otherwise, all records will be inserted or modified to the default LicenseType value, which is Physical.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````
+
+Overview
+As of May 2021 (release H2105), RapidResponse customers can take advantage of new features to the underlying security model that provide the ability to restrict access to sensitive data at the table and field level.
+
+
+How this can benefit you
+Currently, if a user does not have authoring permissions, they can only see information through workbooks shared with them. The author of such workbooks can control both row and field level content that is made visible through design. In some cases, however, data restriction may be required even for those with authoring permissions. Leveraging the new permissions management view, data admins can now set field and table-level access to users & groups and manage the inheritance of those permissions.
+
+Table and field level security will:
+
+Secure data and minimize the impact to end users
+
+Allow more users to become authors
+
+Reduce some authoring complexity to control data access.
+NOTE Authors will be able to modify workbooks that use data which they cannot see, however, when they switch to runtime more, they will encounter an error message
+
+This enhanced platform capability is applicable to all current market segments and current customers.
+
+
+How to take advantage of this new feature
+This feature is currently offered in Limited Availability (LA). If you have applied H2105 (and beyond), but do not have access to this capability and would like to leverage it, you will need to create a Support case to request access.
+
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+In the 'Errors and Warnings' worksheet of the 'Data Import and Update log' the following error is observed:
+
+Duplicate record for <Namespace>::<TableName> ignored with keys: <Field>=<Value>
+Wrap Text
+
+Active
+ 
+
+Cause
+Multiple records in the same Data Update are trying to be inserted with the same key values
+
+Article Resolution
+Inspect the record number and field values in the Data Import and Update log errors. These will point to the record line in the extract file and the field values causing the error.
+Data Source and Mapping will indicate the key fields and their columns for the extract file.
+Remove any records with duplicate key values in the extract file/s.
+Once all records containing duplicate keys are removed, the record should insert fine.
+Follow up with your source system to understand why records with duplicate keys are being extracted to avoid this behavior in the future.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Getting the following error when importing Integration Package (IPK) file
+
+The following Tables or fields are not in the active data model, data for these tables or fields will not be imported
+Wrap Text
+
+Active
+ 
+
+error
+
+Cause: IPK file was generated on a higher version of RapidResponse and imported on a Lower version of RapdResponse
+
+Article Resolution
+Make sure the source and destination version of RapidResponse matches when importing the IPK file.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Java Script Exception 'rapidResponse.workbooks.forEach'
+Hello
+
+ 
+
+I am working on some automated user and user group creation/maintenance for a client and there is some permission data that is not available in the 'Rapid Response System Data'. workbook.
+
+ 
+
+In the past i have used a script to fetch resource permission data and push to a table.
+
+ 
+
+This method is no longer working for workbooks, it does work for every other resource type (Forms, filters, dashsboard...)
+
+ 
+
+I have replicated this error on a client server and sandbox server, it's does give different server event log errors in each system
+
+Dev-Value cannot be null (H2503.2)
+Sandbox Invalid bucket interval calendar (H2503.2).
+ 
+
+I suspect that the access control list is now different for workbooks
+
+ 
+
+Is there another way to use the foreach collection for workbooks?
+
+ 
+
+This script generates errors in the server event log i have attached as a file here as well.
+
+ 
+
+function main() {
+
+  // Script execution starts here.
+
+  // Remove this function if this script is intended to be included in other scripts.
+
+  var resourcePermissions = new Array();
+
+   
+
+  rapidResponse.workbooks.forEach(function processResource(resource) {
+
+    resource.accessControlList.forEach(function savePermission(permission) {
+
+      var permissionRow = [permission.id, resource.name, resource.scope, permission.level, permission.isInherited];
+
+      // resourcePermissions.push(permissionRow); // Uncomment if you want to store the permission data
+
+      rapidResponse.console.writeLine(permissionRow);
+
+    });
+
+  });
+
+}
+
+ 
+
+Here is the console output.
+
+ 
+
+The 'test workbook' script did not complete.
+
+ 
+
+Line 6, char 29: UnexpectedError
+
+ 
+
+WorkbookCollection.forEach: An unexpected error occurred.
+
+ 
+
+
+Resolution:the support team identified the issue, there was a macro with a null expression that was triggering the unexpected error.
+
+ 
+
+After maintaining an expression for the Macro the script completed.
+
+ 
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+What is the purpose of the "WebServerUrl" field in RapidResponse?
+
+Article Resolution
+In the Web server URL box, type the address of the RapidResponse Application Server. This is the address that users use to sign into RapidResponse. For example, https://Gateway/Comp_id.
+
+This address is used to support the functionality that send links to resources, reports, and web addresses using Message Center and email messages.
+
+This field is also used to open Web Client directly. In that case, the URL should be Https://Gateway/web/Comp_id/#. 
+
+ 
+
+More information can be found here: https://help.kinaxis.com/20162/GlobalHelp/default.htm#../Subsystems/Ad/content/rr_admin/system_management_(op)/configuring_e_mail_support.htm
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+When user opens the Inventory Planning workbook on their environment, The data in the Safety Stock Review worksheet does not display and generates error:
+
+ 
+
+You cannot view data in this worksheet. Please contact your RapidResponse administrator. Problem: A composite worksheet, '1.1 Safety Stock Override - References', references a component worksheet, '1.1.1 Safety Stock', in which the worksheet filter expression, or a column expression, is not valid.
+
+ 
+
+Cause:
+ 
+
+The error is coming from the worksheet "1.1.1 Safety Stock" which has a field named "BeginDate" which is added with Variable named "$ReportingCalendar" but there is no data available for this value so it throws an error.
+
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+How to allocate hard supply to Demand?
+
+Article Resolution
+To allocate hard Supply to Demand, create a ModelRule and have it enabled (make sure it is not set to ignore). In the below scenario, the MUEPoolNettingType.ModelRule is set to Ignore, which means No model netting is performed for this part based on this document > RapidResponse Data Model and Algorithm Help (Web client) - MUEPoolNettingType table (kinaxis.com)
+
+Upon changing MUEPoolNettingType.ModelRule set to Net and the ID/SR with the same Model for example "HardLock", the SR is pegged to the ID as expected as below.
+
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Does Rapid Response have inventory rebalancing feature?
+The customer expects the system to recommend a transfer order to move inventory from one warehouse which has excess inventory to another warehouse whose inventory is low. Only when the total demand is lower than the total qty of the existing supplies in the warehouses, procurement should be triggered. 
+This inventory transfer cannot be triggered by part sources as it would cause recursive part sources. So it looks like standard Rapid Response cannot support it. Does anyone have experience in the past of implementing a custom solution successfully for inventory rebalancing?
+
+Look at the "Purchase Avoidance Opportunities" workbook. This workbook is a cross site inventory balancing view to look movement of inventory that avoids buying more (Planned PO). If you drill down on the Purchase Avoidance Opportunity by value ($), the Transfers Opportunities worksheet will show up at the bottom and you can then set up transfer there.
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+https://knowledge.kinaxis.com/s/article/Past-KEG-Event-Recordings
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````
+
+https://knowledge.kinaxis.com/s/article/DashboardAuthoring2015360850
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+https://knowledge.kinaxis.com/s/system-admin-on-prem-on-demand-videos
+
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````
+
+
+https://knowledge.kinaxis.com/s/Automation-Tasks-Videos
+https://knowledge.kinaxis.com/s/responsibility-configuration-videos
+https://knowledge.kinaxis.com/s/system-admin-on-demand-videos
+https://knowledge.kinaxis.com/s/system-admin-on-premise-videos
+https://knowledge.kinaxis.com/s/article/UpgradeBestPractices
+
+````````````````````````````````````````````````````````````````````````````````````````````````
+
+According to definition safety stock is a quantity of stock planned to be in inventory to protect against fluctuations in demand or supply. So it is not demand itself, it is level of inventory balance at which part should be at the specific point of time.
+
+ 
+
+Safety stock itself is causing the additional planned order generation when there is no more demand and planned inventory is still below the given stock quantity. Such a cases can be reported out of SupplyDemand table where field DemandSource = None, SupplySource = PlannedOrder (some additional filtering, checks is needed, i.e to check if supply excess is not caused by moq / multiple qty).
+
+ 
+
+When there is "real" demand then safety stock i causing the "expedite" of planned order the planned order due date will be earlier than the demand due date minus effective safety time. In such cases safety stock is causing the earlier due date planning but it is hard to say that planned order was generated "purely" because of safety stock existence.
+
+ 
+
+Not sure which cases you are looking for (for your point 1) - the planned orders generated purely because of planned inventory below safety stock or planned orders expedited because of planned inventory below safety stock, but I think both cases can be reported out of SupplyDemand table.
+
+ 
+
+For your question 2 SupplyDemand table and DemandSource = None, SupplySource = PlannedOrder plus additional filters for removing moq / qty multiple etc (if necessary). should be enough.
+
+ 
+
+Safety Stock is not a demand itself, it is the inventory target so it is correctly not reported as the demand in RR tables, that's why (I think) it is not so easy to get this info from SupplyDemand / WhereConsumed / other tables.
+
+ 
+
+``````````````````````````````````````````````````````````````````````````````````````````
+
+	Article Summary
+Planned order does not consume Onhand Inventory first when MLS is enabled.
+
+Article Resolution
+The commit level is 'MediumExplodePriority', which means the demands are processed by due date, instead of priority.
+
+The whole point is that the safety stock has a pool that is NOT used by any demands, therefore, this safety stock is treated as 'excess' and therefore, it is processed last. Check MLS sequence number. If there is real demand with the same pool as the safety stock, MLS will perform demand transformation on the safety stock. However, the processing sequence depends on the due date of the read demand and commit level.
+
+It is during Netting (MLS) that demand transformation is performed. Planned orders are generated in Netting, CTP does not generate planned orders.
+````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+The following items describe what to check for when Planned Orders are late
+
+Check if there is enough constraint capacity.
+Check if PartSource's lot size and if it can be supplied on time due constraint or material availability.
+Conditions for reclaim logic to kick in
+OH supply
+CommitLevel=High
+Low priority demands ahead of high priority demands
+
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````
+
+https://knowledge.kinaxis.com/s/article/FAQSortSequenceforDemandsforSupplyAllocation4984
+
+```````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+RapidResponse generate excess stock for parts with time phase safety stock setting. What is the reason that causes the excess stock?
+
+Article Resolution
+Cause:
+The parts with time phase safety stock setting has high demands before the PDFDate and demands drop sharply after the PDFDate. With high safety stock and real demands between RunDate and PDFDate, RapidResponse is trying to satisfy these (basically planning early for the real demands) and it generates the planned orders to take care of that. However due to the Planning Time Fence, they can only be planned on the PDFDate and we are seeing a huge quantity on that date. After PDFDate, safety stock is dropping but demand is dropping faster to a much lower level, the buffer that was built up is not going to be consumed anymore and will remain as excess.
+
+Resolution:
+With parts with phasing out demand it would be good to carefully examine the Safety Stock settings. For example changing the starting date of the Safety Stock to be the PTFDate. MultipleQty also needs to be taken into consideration for later small demand quantities.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+Why is there a PlannedPO generated for 1020 Units when you can see that there is a balance of 1020 remaining at the site ?
+
+What is this being used for?
+
+
+
+q2.png
+
+
+
+Article Resolution
+The reason of the Planned order is because the SupplyType.ProcessingRule is set to Non-reschedulable. According to the SupplyType document, with this setting, Supplies are assumed to be unable to be rescheduled even if required earlier or later than it is currently scheduled. The ScheduledReceipt.DueDate is the date used for netting and explosion purposes. With this setting, a new planned order might be created to cover the demand instead of using the scheduled receipt (depending on when the supply is required).
+
+ 
+
+A planned order is generated on 08-23-24 because there is a total demand of 1024 due on that day. There is an SR due on 08-24-24 but it is late by one day so Maestro creates a PO on the demand due date to provide on time supply.
+
+
+
+To resolve issue, change the SupplyType.ProcessingRule is set to RecommendOnly. In doing this, no planned order will be generated because RapidResponse will try to use the scheduled receipt before planning any new planned orders with this setting 
+
+
+
+```````````````````````````````````````````````````````````````````````````````````````````
+
+
+https://knowledge.kinaxis.com/s/article/Planned-order-available-dates-are-future-for-an-expiry-assembly-part
+
+````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+A particular part has only one transfer PartSource at site A, which is getting the transfer from site B. However this part at site B does not have any PartSources so it is not planning. While there is a break in the network, missing PartSource, the Planned order at site A is still calculating a non-Future AvailableDate. Knowing that PlannedOrders (and DueDate) are generated during the netting calculation, the expectation is that during CTP calculation the available date would be calculated as ‘Future’ because the supplying site B is missing a partsource and not planning.
+
+How is the available date at site A being populated when the supplying site B is not planning or supplying?
+
+Article Resolution
+The current behavior is expected.
+
+In the original design of RapidResponse core algorithms, there were 2 design choices that were consciously made, but differ from majority of other planning systems:
+
+A Part without any valid PartSource is ignored in core algorithms. In other words, it’s equivalent to setting the Part.Type.ProcessingRule = Ignore. This means that during netting initialization, this Part record (without a valid PS) won't be processed at all.
+A Make or Transfer PartSource at the bottom level of the product structure (aka, no dependent level below it) is treated as a Buy PartSource automatically. In other words, if a PartSource (that should generate dependent demand) cannot generate dependent demand (due to mis-configuration), RapidResponse assumes that the PartSource represents buying from a supplier and thus has no dependent requirement.
+In RapidResponse, a Part without any valid PartSource is considered a major configuration error. If the parent part is expected to have CPOs's AvailableDate=Future due to lack of component material, the component part needs to have a PartSource with OrderPolicy.OrderGenerationRule set to NoOrders. 
+
+Any of the following configuration will ensure a PartSource is valid:
+
+Type.EffectivityRule = Always
+Type.EffectivityRule != Never and EffectiveInDate < EffectiveOutDate
+The Data Model and Algorithm Help document has been updated to explain how parts without any PartSource is treated. 
+
+- Any Part records without a valid Part Source is treated as Ignore.
+- For Make or Transfer Part Sources, if the component / sourcing site is an invalid part, the parent Part Source is automatically treated as a Buy Part Source.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Ensure that both the transfer part and sourcing part in each transfer relationship have one or more valid PartSource records defined. Any part not having at least one valid PartSource record will be ignored and not planned during Netting calculations (that is, treated the same as if PartType.ProcessingRule were set to Ignore).
+
+In cases where the part at the sourcing site does not have at least one valid part source (for example, it does not have a PartSource record or its PartSource record(s) never becomes effective), supply of the transfer part will still be planned assuming that it has a valid part source. In such cases, however, the transfer part will not explode dependent requirements to the sourcing site and availability of the supply will be based on the transfer part's parameters only. In this sense, the transfer part behaves as if it were from a Buy source under such conditions.
+
+------------------------------------------------------------------------------------------------------
+
+
+PTFRule of LastDueLead might help. with this setting PTF will include the Lead Time.
+
+New PTF would be the current PTF + Lead Time. startDate may fall before the new PTF (PTF gates DueDate and not StartDate) but not before your current PTF.
+
+======================================================================================================
+
+Article Summary
+Users are noticing that maestro is generating planned orders for future demands that are outside the effectivity dates of the part sources. This is causing a conflict with substitution setups, as the planned orders should not be generated for the primary parts after the effective end date of the partsource.
+
+ 
+
+issue 1.png
+
+Article Resolution
+The issue is caused by the SourceRule.DateEffectivityRule being set to Normal. 
+
+As per the docs, changing the Date Effectivity Rule from Normal to AdjustedDemandDate resolves the issue - Maestro Global Help - SourceRule table
+https://knowledge.kinaxis.com/s/article/Maestro-generating-planned-orders-for-future-demand-outside-date-effectivity-of-part-sources
+
+--------------------------------------------------------------------------------------------------------------------------
+
+RR may move ship date in the past if there is no date available in the ship calendar.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Article Summary
+Demand exceptions resulted from the configuration in the automation for ITE calculation as below:
+
+-       PartSource.CTPITE = ITE
+
+-       PartSourceType.ExpiryRule overwrites the PartType.ExpiryRule
+
+-       PartType.UseDaysSupply = 0
+
+-       Many ExpiryDate for ScheduledReceipts (SR) are not set
+
+ 
+
+Root Cause:
+
+1.     PartSource.SafetyLeadeTime was used
+
+2.     PartSourceType.ExpiryDateRule = DockDate
+
+3.     Current ITE calculation of ITE left out the SafetyLeadTime PartSourceType.ExpiryDateRule = Dockate forcing the ITE calculation to consider the SatetyLeadTime
+
+Article Resolution
+Simplify the ITE calculation:
+
+-       Set PartSourceType.ExpiryDateRule = DueDate for all PartSources
+
+-       Adjust the ITE for raw material accordingly
+
+-       New IT calculation: Parent PS.ITE = Child PS.ITE – Child Part's SafetyLeadTime – Parent PS's LeadTime
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+When expiry logic is enabled, demands are forced to be processed in date sequence regardless of OrderPriority, EarliestExpiryDate (EarED) for a demand means it is the earliest date a supply is allowed to expire for it to be usable by the demand. The demand can only be satisfied by supplies that expire after its EarliestExpiryDate.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
+The way RapidResponse calculates Safety Stock considers Part.PlanningCalendar.TimeUnit. This may cause confusion when the calendar used for demand grouping (in Planning Sheet) and part's time unit are different. 
+
+```````````````````````````````````````````````````````
+
+The parts with time phase safety stock setting has high demands before the PDFDate and demands drop sharply after the PDFDate. With high safety stock and real demands between RunDate and PDFDate, RapidResponse is trying to satisfy these (basically planning early for the real demands) and it generates the planned orders to take care of that. However due to the Planning Time Fence, they can only be planned on the PDFDate and we are seeing a huge quantity on that date. After PDFDate, safety stock is dropping but demand is dropping faster to a much lower level, the buffer that was built up is not going to be consumed anymore and will remain as excess.
+
+
+```````````````````````````````````````````````````
+
+safety stock demand does not have a demand type of any sort (although it does have priority), the safety stock demand will always be planned for and never "expired" or ignored.
+
+````````````````````````````````````````````````
+
+When partial planning is enabled and an expiry demand exception is encountered, RR creates a demand exception but does not drop the demand. Traditionally partial planning only drops demand for lateness, e.g. material lateness (with MLS), constraint lateness, or PTF reason.
+
+Article Resolution
+Kinaxis Dev team has determined that resolving this issue requires deeper investigation into the interactions between several features—specifically partial planning with expiry, safety stock, and demand exceptions. Currently, these interactions are not clearly defined, and additional analysis is needed to ensure a robust solution.  
+
+An enhancement request, RRP-234516, is generated to support a more comprehensive investigation and potential future enhancements.
+
+
+````````````````````````````````````````````````````
+
+ identify the Safety Stock Demand out of the  ​SupplyDemand table to show its impact on PlannedOrders . I think kzbikowski is absolutly right. The Safety stock is not the demand itself, but drives the demand.
+
+ 
+
+My solution was to have a look on PlannedOrders generated out of SafetyStockQty. policy.
+
+ 
+
+What I did was I filtered for:
+
+ 
+
+DemandSource Like 'None'
+
+And
+
+SupplySource Like 'PlannedOrder'
+
+ 
+
+in the SupplyDemand table (Allocated Qty).
+
+ 
+
+In a second step I matched the DemandDueDate (Supply Demand table)  of the SafetyStock with the DemandDate of my 'PlannedOrder' (CTP Activity Table) .
+
+ 
+
+All in all a quite time consuming and complicated task ;)
+
+``````````````````````````````````````````````````````````````````````````
+
+Article Summary
+We have seen a case where the system is not handling TimePhasedSafetyStock (TPSS) correctly.
+
+It appears that when we have a large TPSS quantity, Maestro is building to the safety stock instead of building other parts that have actual customer orders.
+
+These FG’s have the same components so the expectation is that the system would be creating planned orders on the FG that has real demand and not create planned orders on the FG that has TPSS. 
+
+Article Resolution
+There are a few reasons that could contribute to this scenario.
+
+ 
+
+1) Changing the commit level to MediumExplodePriority
+
+2) If using MLS, change the MLS.ShortTermExcessRule from Reduce to Allow
+
+3) Delay the start date of the safety stock, and/or reduce the amount of safety stock.
+
+4) Enable the demand transformation feature i.e. changing the (SafetyStockPolicy.DemandTransformation = "FirstInFirstOut").
+
+5) If all of the above fails and shortages are still being seen, then please engage Kinaxis Support as the overall solution may need to be reviewed prior to suggesting further recommendations.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+Problem
+How do I set up my environment to take advantage of Order Priorities?
+
+ 
+
+Resolution
+The following is a list of fields that should be reviewed when setting up Order Priorities.
+Many of these values will override other settings.
+
+Part Type table fields:
+
+UseDaysSupply
+Valid values are:
+• Y
+• N
+
+If Y (Yes), use Part.NumberDaysSupply to group planned orders. Planned orders are
+grouped for the lesser of ‘n’days or until a non-reschedulable supply is seen.
+MaximumQty still applies to individual PartSources. PriorityRule is treated as ‘Ignore’,
+regardless of its actual value.
+All supplies for parts with UseDaysSupply will be assigned priority of DefaultPriority.
+CAUTION: Avoid using UseDaysSupply with parts with components or Constraint.
+UseDaysSupply can cause order commitments to be violated by new demands. (Increased
+supply quantity may result in a supply being late, thereby making all demands for that
+supply late).
+Recommendation: Use part source ship calendars, rather than days supply, to align
+periodic deliveries.
+
+If N, Part.NumberDaysSupply is ignored.
+Default value: N
+Note DaysSupply=’Y’ overrides CommitLevel.
+
+CommitLevel
+Controls how order commitments are maintained and sets how priority is applied to
+netting (supply planning) and CTP (available date calculations).
+Valid values are:
+
+• High — priority is used in both netting and CTP. This setting ensures that priority is
+propagated from demands to planned supplies. Appropriate for parts that have
+constraints or whose components could be constrained. For example, this setting
+would be used for purchased parts with supplier constraints, and for most
+assemblies.
+
+• Medium — priority is used in CTP, but not in netting. This means that priority is not
+propagated from demands to planned supplies, nor is priority used when
+allocating constraint to supplies for this part. However, priority is used when
+allocating constraint to supplies for this part. Appropriate for parts that have no
+dependent limitations (including no constraints) but may have limited
+availability due to lead times and time fences. For example, this setting would be
+used for purchased parts without supplier constraints.
+
+• Low — priority is not used in either netting or CTP. Nor is priority used when allocating
+constraint. Appropriate for parts where all part sources have no active Constraint and
+where any Make sources have unlimited availability. Appropriate for parts that have
+no practical limit to availability (neither constraint nor limitation on required
+components).
+Note also that a Low setting overrides a setting of Y on OrderPriority.MaintainCommitments.
+This is the default value.
+
+Default Priority
+The priority to use for planned orders resulting from safety stock requirements or
+when PriorityRule = ‘Ignore’.
+Referenced table: OrderPriority.Value Default value: OrderPriority with the highest number.
+
+OrderPriority Table
+MaintainCommitments
+Controls whether transaction sequence is considered as part of priority for orders using
+a priority.
+Values are:
+• Y — transaction sequence is considered part of priority. Typically, this setting should be
+used for orders that are truly committed to production (for example, the highest
+priority independent demands).
+• N — transaction sequence is not considered part of priority. This is the default value and
+should be used for most priorities.
+Note that when PartType.CommitLevel is set to Low, transaction sequence is ignored
+regardless of the setting of this field.
+
+PlanningPriority
+The relative importance associated with each OrderPriority value. Lower values are
+considered the higher effective priority.
+Different OrderPriority records can share the same PlanningPriority value. If multiple orders
+share the same PlanningPriority value, they are treated the same, even if their
+OrderPriority differs. Therefore, it is recommended that you give each
+OrderPriority record a distinct PlanningPriority value.
+
+Sorting for demands:
+
+1. DueDate (if not demand is not late)
+2. Priority & Sequence
+3. AllotmentOrder (from DemandType)
+4. PegSupply.DueDate
+5. Quantity
+6. Order.Id and Order.Site (PegPart & PegSite for dependent demand)
+7. OrderType
+8. Line
+9. Model
+10. Unit
+
+Sorting for supplies:
+
+1. AvailableDate (or DemandDate) based on the
+PartType.SupplyAllocationRule=ByAvailable,
+respectively ByMRP
+2. SupplyType.SortBeforeDate
+3. Priority & Sequence
+4. ReschedDate
+5. SupplyType.SortSameDate
+6. Status.SortBeforeStart
+7. StartDate
+8. STatus.SortSameStart
+9. RecommendDate
+10. EffDueDate
+11. Quantity
+12. Order.Id & Order.Sie
+13. OrderType
+14. Line
+15. Pool
+16. Model
+17. Unit
+
+
+````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+A user has a requirement to lock the sales forecast so that the current month forecast is un-editable. Currently, users can edit the forecast for all months from the current date forward. Instead, they want to make the current month un-editable while the future months (today + 1 month) are all editable.
+
+
+
+For example, on April 2, Sales Reps need to see the April forecast quantity but should not be able to edit the April sales forecast quantity. They should be able to see and edit the sales forecast quantity for May and all months after.
+
+Article Resolution
+Conditionally editable column applies to the whole column. In a crosstab worksheet is either editable or not editable for all buckets. There is no feature to make this conditionable to the date. There is currently an Enhancement Request for this (CER-I-98).
+
+
+````````````````````````````````````````````````````````````````````````
+
+Issue:
+While testing a small data change in DEV, most parts were showing zero supply (all pegged to "FUTURE"). Usual error checks showed nothing abnormal, and production data worked fine.
+
+Key Observations:
+
+Setting constraints to LOADONLY improved supply.
+
+Making resources "infinite" had no effect.
+
+Turning MLS off also improved supply.
+
+Problem appeared only in DEV after deleting some records (BOMs, part sources, source constraints).
+
+Suggestions (from Nancy):
+Possible causes of missing supply:
+
+Recursive BOM structure.
+
+Missing part source.
+
+BOM with no available constraint.
+
+Order policy = NoOrders.
+
+Extremely large/erroneous lead time.
+
+Missing planning calendar dates.
+
+Resolution:
+Root cause was recursion in a BOM record. Once removed, supply returned to normal.
+
+
+``````````````````````````````````````````````````````````````````````````````````````````````````
+
+Analytics results are delivered through calculated fields, not just calculated tables. If a calculated the field is present in your worksheet, even if the column is hidden, the analytic will be run.
+
+ 
+
+Avoiding running analytics does not make sense. How much value can you get from reporting on input data? RapidResponse hides the complex calculations behind a simple field like AvailableDate.
+
+ 
+
+Having said this, you need to use analytics judiciously: apply proper filtering, use only what you must, use the simplest analytics table that has what you are looking for instead the more complex one, which is more expensive to calculate. Follow Pascal's advice. Start at the bottom of the composite and check if every additional step is built in an efficient way. There are a number of good Expert Series videos on the KLC (Kinaxid Learning Center) that explain factors affecting worksheet performance.
+
+ 
+
+The first step is to look at the worksheet performance dialog. It gives you the amount of CPU time spent on analytics and the number of records and processing time. The details show you LOD (Line of Descent) which illustrates how filtering was applied.
+
+ 
+
+Also, there are techniques that can help, such as cached worksheet. Often, doing reporting on a shared scenario that is frequently edited causes analytics cache to be recalculated all the time. In those cases, adding a reporting scenario that is updated once every 15 minutes would help.
+
+ 
+
+Troubleshooting performance problems is not easy, but it is very much possible to achieve a 10x improvement when worksheets are not built the best way. Don't lose faith :-)
+
+
+`````````````````````````````````````````````````````````````````````````````
+
+
+What is the Kinaxis Maestro Database Integrity Check (DIC)?
+Maestro checks the database for invalid references and inconsistent counts in scenarios. This procedure is called a Database Integrity Check and can alert you in advance of potential operational problems with Maestro.
+
+Maestro includes a default scheduled task that runs once each day and executes the Maestro DataIntegrityCheck command.
+
+
+To review the DatabaseIntegrityCheck command logs
+In the Administration pane, under System Monitoring, click Administration Log
+Choose the Command Messages worksheet and select the command DataIntegrityCheck from the drop-down menu
+Note: The logged information in the Administration Log workbook is available to system and data administrations, including Master Admin. 
+
+
+
+Taking a proactive approach, rather than waiting for a system problem or failure, can potentially and significantly reduce risk:
+
+Inaccurate resource reporting
+Potential performance degradation
+Potential for complex data remediation
+Risk to system stability
+Accuracy of analytic results
+
+
+``````````````````````````````````````````````````````````````````````````````````````
+
+Topic: Retrieving column expressions in RapidResponse via scripting.
+
+Problem:
+A user created a script to list workbooks, worksheets, and columns, but also wanted to extract column expressions.
+
+Key Responses:
+
+Not possible via scripting API – expressions, grouping, and bucketing cannot be retrieved or authored through scripts.
+
+Workaround suggested: Use Workbook Compare by making a dummy change or comparing to a blank workbook. The compare file contains all workbook properties (including expressions), which can then be parsed.
+
+Confirmation: This method works; user planned to parse the compare file.
+
+Additional note: Kinaxis internal tools and hackathon projects exist for workbook visualization, including graph views in the Web Client that show relationships and properties.
+
+Outcome:
+Direct retrieval via script is not supported, but using Workbook Compare + parsing output provides a practical workaround.
+
+
+
+```````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+There is a requirement to track all data changes made within the system whether through manual user edits, workbook commands, data updates, or Excel uploads. Is there a centralized table or logging mechanism that can provide a complete, end-to-end audit trail of all data modifications across different input methods?
+
+ 
+
+ 
+
+Article Resolution
+The Data Import & Update Log workbook provides visibility into changes made via automation (data updates).
+
+For manual imports (e.g., Excel to Workbook), only summary information is available such as record count and import errors.
+
+User changes to scenarios (via Import to Scenario) can be viewed using the Scenario Properties pane under:
+
+Data Changes (pending commits)
+
+Inherited Data Changes
+
+At present, Kinaxis does not provide a unified, end-to-end audit log that captures every change across all interfaces (workbook commands, Excel imports, etc.).
+
+If extended data retention or a full audit trail is required, it is recommended to export DataChange logs regularly to an external system before the 45-day retention limit.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+If there is a situation where Scheduled Receipts would have zero or negative quantity due, how would RapidResponse handle that?
+
+Article Resolution
+Records with zero or negative quantity are ignored (ScheduledReceipt.Quantity) for netting. However, the record would still be able to be seen in Rapid Response.
+
+ 
+
+If these records are not being seen in RapidResponse, check the data update files to make sure they are being included for data updates
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````
+
+The user wants access to all currency conversion rates from the CurrencyConversionActual system table, but cannot create a worksheet (WS) directly on it. In their current workbook, a list variable restricts data to only the selected currency, and they cannot modify or copy that worksheet.
+
+Initially, it seemed the only way to change data in this table was through Data Update to the Enterprise scenario, but later testing showed otherwise. By copying the Currency Conversion Rates standard workbook, it is possible to edit the worksheet called Conversion Current. Removing filters and conditional hiding allows viewing all records. Alternatively, a new workbook can be created, and the worksheet copied from the standard one. After turning off GroupBy and deleting filtering, the Date and Rate fields become editable, and new records can be inserted (though not deleted).
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````
+
+The system variable $SelectedUnitofMeasure, $SelectedUnitOfMeasureConverted
+``````````````````````````````````````````````````````````````````````````````````````````````
+
+ rapidResponse.loggenOnUser.id
+
+``````````````````````````````````````````````````````````````````````````````````````````````
+
+ system variable ENVIRONMENT("ServerType") 
+
+``````````````````````````````````````````````````````````````````````````````````````````
+
+"$Scenario#0" system variable
+
+``````````````````````````````````````````````````````````````````````````````````````
+
+🔹 Issue
+
+When running Statistical Forecast Set-up in S&OP Forecast Item Management, no results appear because the system cannot find any ForecastItemParameterType record where System::IsDefault = true.
+
+🔹 Root Cause
+
+Newer releases (2016.2.15 and later) of S&OP Forecast Item Management depend on the System::IsDefault record in the ForecastItemParameterType table.
+
+If multiple records exist, none may be flagged as default, causing the command to fail.
+
+🔹 Solution
+
+Go to Enterprise Data and review ForecastItemParameterType records.
+
+Delete unwanted records (ensure they aren’t used in child scenarios).
+
+Reboot the server.
+
+The system will then set System::IsDefault = true on the remaining record.
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+🔹 Issue
+
+During site transformation (EBS → SAP), a customer found that calculated intersite demands differ between scenarios, even though input data counts are identical.
+
+🔹 Root Cause
+
+Each input record has a RecordID, a unique sequential identifier.
+
+Site conversion requires recreating some SRs/IDs, which changes the RecordID sequence order.
+
+Since RapidResponse calculations depend partly on RecordID sequence, differences in ordering can lead to variation in calculated demands/supply.
+
+🔹 Resolution
+
+The differences in calculated results are expected system behavior after a site transformation. This is due to how RecordIDs (unique identifiers for input records) are regenerated during the conversion process:
+
+When sites are transformed (e.g., from EBS to SAP), certain supply records (SRs) and IDs must be recreated.
+
+This recreation changes the sequence/order of RecordIDs compared to the original scenario.
+
+RapidResponse uses RecordID sequence as one of the internal factors when pulling and calculating demands.
+
+As a result, even if the input data matches 100% between the two scenarios, the calculation results (e.g., Intersite Demands, supply quantities) may differ slightly because the RecordID order is no longer the same.
+
+Therefore, after performing a cross-site transformation, it is not guaranteed that calculated results will be identical between the original and transformed sites. Minor differences should be considered a normal outcome of the transformation process.
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Article Summary
+Symptom
+The Bill of Material (BOM) chain is broken when a Phantom part is introduced
+
+Cause
+The BOMAlternative on the Phantom part. part sources are not populated
+
+ 
+
+Article Resolution
+Populate the BOMAlternative for the Phantom parts to match their parent's BOMAlternative value
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
+
+
+
 
