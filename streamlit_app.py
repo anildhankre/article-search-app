@@ -1,22 +1,46 @@
 import streamlit as st
-from openai import OpenAI
+import requests
+import os
 
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Load Hugging Face API key from secrets
+HF_API_KEY = st.secrets["HF_API_KEY"]
 
-st.title("Article Search with ChatGPT")
+# Hugging Face model (free)
+MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2"
+API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
+HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
-query = st.text_input("Ask something from articles.txt")
-if st.button("Search & Answer"):   # ✅ only run on button click
-    with open("articles.txt", "r", encoding="utf-8") as f:
-        articles = f.read()
+def query_huggingface(prompt):
+    payload = {
+        "inputs": prompt,
+        "parameters": {"max_new_tokens": 300}
+    }
+    response = requests.post(API_URL, headers=HEADERS, json=payload)
+    if response.status_code == 200:
+        data = response.json()
+        # HuggingFace returns a list of dicts
+        return data[0]["generated_text"]
+    else:
+        return f"Error: {response.status_code} - {response.text}"
 
-    prompt = f"Answer the question based only on the following text:\n\n{articles}\n\nQuestion: {query}"
-    
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        st.write(response.choices[0].message.content)
-    except Exception as e:
-        st.error(f"Error: {e}")
+# --- Streamlit UI ---
+st.title("📄 Article Search with Hugging Face")
+
+# Load your local articles.txt
+with open("articles.txt", "r", encoding="utf-8") as f:
+    articles = f.read()
+
+user_input = st.text_input("Ask something from articles.txt")
+
+if user_input:
+    prompt = f"""
+    Answer the following question using only this article content:
+
+    {articles}
+
+    Question: {user_input}
+    """
+    with st.spinner("Thinking..."):
+        answer = query_huggingface(prompt)
+    st.write("### Answer:")
+    st.write(answer)
