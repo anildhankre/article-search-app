@@ -1,32 +1,48 @@
-import streamlit as st
 import re
+import pathlib
+import streamlit as st
 
 st.set_page_config(page_title="Article Search", layout="wide")
+st.title("📄 Article Search (Shared File)")
 
-st.title("📄 Article Search & Q&A (Lightweight)")
+# 1) Read your shared file that sits in the same repo
+FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
+if not FILE_PATH.exists():
+    st.error("❌ 'articles.txt' not found in the repo (same folder as streamlit_app.py).")
+    st.stop()
 
-uploaded_file = st.file_uploader("Upload your text file", type=["txt"])
+text = FILE_PATH.read_text(encoding="utf-8")
 
-if uploaded_file:
-    text = uploaded_file.read().decode("utf-8")
-    # Split into articles based on delimiters
-    articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-    articles = [a.strip() for a in articles if a.strip()]
+# 2) Split into articles by your delimiters: ```````````, ==========, -------
+articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+articles = [a.strip() for a in articles if a.strip()]
 
-    st.success(f"Loaded {len(articles)} articles.")
+st.success(f"Loaded {len(articles)} articles from your shared file.")
 
-    query = st.text_input("🔎 Ask a question or enter keywords:")
+# 3) Search box
+query = st.text_input("🔎 Enter keywords (case-insensitive):").strip()
 
-    if query:
-        results = []
-        for i, article in enumerate(articles):
-            if query.lower() in article.lower():
-                results.append((i, article))
+def highlight(snippet: str, q: str) -> str:
+    if not q:
+        return snippet
+    # simple case-insensitive bold highlight
+    pattern = re.compile(re.escape(q), re.IGNORECASE)
+    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
 
-        if results:
-            st.subheader("Search Results")
-            for idx, (i, res) in enumerate(results, 1):
-                with st.expander(f"Result {idx} (Article {i+1})"):
-                    st.write(res)   # show full article
-        else:
-            st.warning("No results found. Try another word.")
+if query:
+    # 4) Keyword search
+    matched = []
+    qlower = query.lower()
+    for i, article in enumerate(articles, start=1):
+        if qlower in article.lower():
+            matched.append((i, article))
+
+    if matched:
+        st.subheader(f"Search Results ({len(matched)})")
+        for idx, (art_no, body) in enumerate(matched, start=1):
+            with st.expander(f"Result {idx} (Article {art_no})"):
+                st.markdown(highlight(body, query))
+    else:
+        st.warning("No results found. Try a different word.")
+else:
+    st.info("Type something above to search your shared knowledge base.")
