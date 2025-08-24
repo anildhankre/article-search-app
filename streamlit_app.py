@@ -1,66 +1,96 @@
-import re
-import pathlib
 import streamlit as st
-from collections import Counter
-import string
+import json
+import requests
 
-st.set_page_config(page_title="Article Search", layout="wide")
-st.title("📄 Article Search (Shared File)")
+# ======================================================
+# 1) Load Articles (from uploaded/shared JSON file)
+# ======================================================
+@st.cache_data
+def load_articles():
+    try:
+        with open("articles.json", "r", encoding="utf-8") as f:
+            articles = json.load(f)
+        return articles
+    except Exception as e:
+        st.error(f"⚠️ Failed to load articles file: {e}")
+        return []
 
-# 1) Load file
-FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
-if not FILE_PATH.exists():
-    st.error("❌ 'articles.txt' not found in the repo.")
-    st.stop()
+articles = load_articles()
 
-text = FILE_PATH.read_text(encoding="utf-8")
 
-# 2) Split into articles
-articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-articles = [a.strip() for a in articles if a.strip()]
-st.success(f"Loaded {len(articles)} articles from your shared file.")
+# ======================================================
+# 2) Fetch BP Files from GitHub Repo
+# ======================================================
+@st.cache_data
+def get_bp_files():
+    repo_owner = "anildhankre"
+    repo_name = "Kinaxis-BestPractices"
+    branch = "main"
 
-# -----------------
-# 🔹 Build Index
-# -----------------
-def extract_keywords(article: str, top_n: int = 5):
-    words = article.lower().translate(str.maketrans("", "", string.punctuation)).split()
-    stopwords = {"the", "and", "is", "a", "of", "to", "in", "on", "for", "at", "as", "by", "an", "with", "from"}
-    filtered = [w for w in words if w not in stopwords and len(w) > 2]
-    common = Counter(filtered).most_common(top_n)
-    return [w for w, _ in common]
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents"
+    response = requests.get(url)
 
-st.subheader("📑 Index of Articles")
-for i, article in enumerate(articles, start=1):
-    keywords = extract_keywords(article)
-    with st.expander(f"Article {i} — Keywords: {', '.join(keywords) if keywords else 'N/A'}"):
-        st.markdown(article[:500] + ("..." if len(article) > 500 else ""))  # preview
+    if response.status_code == 200:
+        files = response.json()
+        pdfs = [f["name"] for f in files if f["name"].lower().endswith(".pdf")]
+        return pdfs
+    else:
+        st.error(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code})")
+        return []
 
-# -----------------
-# 🔹 Search
-# -----------------
-st.subheader("🔎 Search")
-query = st.text_input("Enter keywords (case-insensitive):").strip()
+bp_files = get_bp_files()
+GITHUB_BASE = "https://github.com/anildhankre/Kinaxis-BestPractices/blob/main/"
 
-def highlight(snippet: str, q: str) -> str:
-    if not q:
-        return snippet
-    pattern = re.compile(re.escape(q), re.IGNORECASE)
-    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
+
+# ======================================================
+# 3) Search Functions
+# ======================================================
+def search_articles(query):
+    results = []
+    for idx, article in enumerate(articles, start=1):
+        if query.lower() in " ".join(article["keywords"]).lower():
+            results.append((idx, article))
+    return results
+
+def search_bp_files(query):
+    results = []
+    for idx, fname in enumerate(bp_files, start=1):
+        if query.lower() in fname.lower():
+            url = f"{GITHUB_BASE}{fname.replace(' ', '%20')}"  # encode spaces
+            results.append((idx, fname, url))
+    return results
+
+
+# ======================================================
+# 4) Streamlit UI
+# ======================================================
+st.title("📄 Article & Best Practices Search")
+
+query = st.text_input("🔍 Enter search term (use `BP:term` for Best Practices files)")
 
 if query:
-    matched = []
-    qlower = query.lower()
-    for i, article in enumerate(articles, start=1):
-        if qlower in article.lower():
-            matched.append((i, article))
+    if query.lower().startswith("bp:"):
+        # ------------------------------
+        # BP FILE SEARCH
+        # ------------------------------
+        bp_term = query[3:].strip()
+        results = search_bp_files(bp_term)
 
-    if matched:
-        st.subheader(f"Search Results ({len(matched)})")
-        for idx, (art_no, body) in enumerate(matched, start=1):
-            with st.expander(f"Result {idx} (Article {art_no})"):
-                st.markdown(highlight(body, query))
+        if results:
+            st.subheader(f"📂 BP File Results ({len(results)})")
+            for idx, fname, url in results:
+                st.markdown(f"**{idx}. [{fname}]({url})**")
+        else:
+            st.warning("No matching BP files found.")
     else:
-        st.warning("No results found. Try a different word.")
-else:
-    st.info("Type something above to search your shared knowledge base.")
+        # ------------------------------
+        # ARTICLE SEARCH
+        # ------------------------------
+        results = search_articles(query)
+
+        if results:
+            st.subheader(f"📑 Article Results ({len(results)})")
+            for idx, article in results:
+                st.markdown(f"**Article {idx} — Keywords:** {', '.join(article['keywords'])}")
+        else:
+            st.warning("No matching articles found.")
