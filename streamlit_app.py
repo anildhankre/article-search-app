@@ -1,94 +1,109 @@
 import streamlit as st
 import requests
-import pandas as pd
+import os
+import json
 
-# ========================
-# 🔐 Authentication
-# ========================
+# -------------------------------
+# ✅ Login Credentials
+# -------------------------------
 VALID_USERNAME = "SimbusRR"
 VALID_PASSWORD = "Simbus@2025"
 
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
+# -------------------------------
+# 🔑 Login Screen
+# -------------------------------
 def login_screen():
     st.title("🔒 Secure Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
+
     if st.button("Login"):
         if username == VALID_USERNAME and password == VALID_PASSWORD:
             st.session_state.authenticated = True
             st.success("✅ Login successful!")
-            st.experimental_rerun()
+            st.rerun()   # go to main app
         else:
             st.error("❌ Invalid username or password")
 
-# ========================
-# 📂 App Content
-# ========================
-def app_content():
+# -------------------------------
+# 📄 Load Articles from JSON file
+# -------------------------------
+def load_articles():
+    try:
+        with open("articles.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+# -------------------------------
+# 📑 Fetch Best Practices from GitHub
+# -------------------------------
+def fetch_best_practices():
+    url = "https://api.github.com/repos/anildhankre/Kinaxis-BestPractices/contents/?ref=main"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.warning(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code}) → {url}")
+        return []
+
+# -------------------------------
+# 🔍 Search Function
+# -------------------------------
+def search_articles_and_bp(query, articles, bp_files):
+    results = []
+
+    # Search Articles
+    for idx, art in enumerate(articles, start=1):
+        if query.lower() in art.get("summary", "").lower() or query.lower() in art.get("resolution", "").lower():
+            results.append(f"📄 Article {idx}: {art.get('summary', 'No summary')}")
+
+    # Search Best Practices
+    for file in bp_files:
+        if query.lower() in file["name"].lower():
+            results.append(f"📘 Best Practice: [{file['name']}]({file['html_url']})")
+
+    return results
+
+# -------------------------------
+# 🏠 Main Application
+# -------------------------------
+def main_app():
     st.title("📄 Article & Best Practices Search")
 
-    # Load Articles from CSV
-    try:
-        articles_df = pd.read_csv("articles.csv")  # replace with your articles file
-        st.success(f"✅ Loaded {len(articles_df)} articles from your shared file.")
-    except Exception as e:
-        st.error(f"⚠️ Failed to load articles: {e}")
-        articles_df = pd.DataFrame()
+    # Logout button
+    if st.button("🚪 Logout"):
+        st.session_state.authenticated = False
+        st.rerun()
+
+    # Load Articles
+    articles = load_articles()
+    if articles:
+        st.success(f"✅ Loaded {len(articles)} articles from your shared file.")
+    else:
+        st.error("❌ No articles found. Please upload or check articles.json")
 
     # Load Best Practices from GitHub
-    BP_REPO = "anildhankre/Kinaxis-BestPractices"
-    BP_FOLDER = ""  # 🔹 change this if PDFs are inside a subfolder (e.g. "docs")
-    BP_API_URL = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_FOLDER}?ref=main"
+    bp_files = fetch_best_practices()
 
-    def load_best_practices():
-        try:
-            response = requests.get(BP_API_URL)
-            if response.status_code == 200:
-                files = response.json()
-                return [f for f in files if f["name"].endswith(".pdf")]
-            else:
-                st.warning(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code}) → {BP_API_URL}")
-                return []
-        except Exception as e:
-            st.error(f"⚠️ Error fetching best practices: {e}")
-            return []
+    # Search box
+    query = st.text_input("🔍 Enter search term (searches both Articles & Best Practices)")
+    if query:
+        results = search_articles_and_bp(query, articles, bp_files)
+        if results:
+            st.subheader("🔎 Search Results")
+            for r in results:
+                st.markdown(r, unsafe_allow_html=True)
+        else:
+            st.info("ℹ️ No matching results found.")
 
-    best_practice_files = load_best_practices()
+# -------------------------------
+# 🚀 App Execution
+# -------------------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-    # 🔍 Search Input
-    search_term = st.text_input("🔍 Enter search term")
-
-    if search_term:
-        st.subheader(f"🔎 Search Results for: {search_term}")
-
-        # --- Articles Search
-        if not articles_df.empty:
-            article_results = articles_df[
-                articles_df.apply(lambda row: row.astype(str).str.contains(search_term, case=False).any(), axis=1)
-            ]
-            if not article_results.empty:
-                st.markdown("### 📑 Articles")
-                for _, row in article_results.iterrows():
-                    st.markdown(f"**{row['Title']}** — {row['Summary']}")
-            else:
-                st.info("No matching articles found.")
-
-        # --- Best Practices Search
-        if best_practice_files:
-            bp_results = [f for f in best_practice_files if search_term.lower() in f["name"].lower()]
-            if bp_results:
-                st.markdown("### 📘 Best Practices")
-                for f in bp_results:
-                    st.markdown(f"- [{f['name']}]({f['download_url']})")
-            else:
-                st.info("No matching best practices found.")
-
-# ========================
-# 🚀 Main App Flow
-# ========================
 if not st.session_state.authenticated:
     login_screen()
 else:
-    app_content()
+    main_app()
