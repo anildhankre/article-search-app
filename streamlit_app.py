@@ -1,15 +1,14 @@
 import streamlit as st
-import json
 import requests
 
-# ======================================================
+# =================================================
 # 1) Load Articles (from articles.txt)
-# ======================================================
+# =================================================
 @st.cache_data
 def load_articles():
     try:
         with open("articles.txt", "r", encoding="utf-8") as f:
-            articles = json.load(f)
+            articles = [line.strip() for line in f if line.strip()]
         return articles
     except Exception as e:
         st.error(f"⚠️ Failed to load articles file: {e}")
@@ -17,75 +16,59 @@ def load_articles():
 
 articles = load_articles()
 
-
-# ======================================================
-# 2) Fetch BP Files from GitHub Repo
-# ======================================================
+# =================================================
+# 2) Fetch Best Practice (BP) Files from Kinaxis-BestPractices Repo
+# =================================================
 @st.cache_data
-def get_bp_files():
-    repo_owner = "anildhankre"
-    repo_name = "article-search-app"
-    folder_path = "Kinaxis-BestPractices"   # ✅ correct folder name
-    branch = "main"
-
-    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{folder_path}?ref={branch}"
-    response = requests.get(url)
-
-    if response.status_code == 200:
-        files = response.json()
-        pdfs = [f["name"] for f in files if f["name"].lower().endswith(".pdf")]
-        return pdfs
-    else:
-        st.error(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code}) → {url}")
+def fetch_bp_files():
+    try:
+        url = "https://api.github.com/repos/anildhankre/Kinaxis-BestPractices/contents/?ref=main"
+        res = requests.get(url)
+        if res.status_code == 200:
+            data = res.json()
+            return [f["name"] for f in data if f["name"].lower().endswith(".pdf")]
+        else:
+            st.error(f"⚠️ Failed to fetch files from GitHub (Status {res.status_code}) → {url}")
+            return []
+    except Exception as e:
+        st.error(f"⚠️ Error fetching files: {e}")
         return []
 
-bp_files = get_bp_files()
-GITHUB_BASE = "https://github.com/anildhankre/article-search-app/blob/main/Kinaxis-BestPractices/"
+bp_files = fetch_bp_files()
 
-
-# ======================================================
-# 3) Search Functions
-# ======================================================
-def search_articles(query):
-    results = []
-    for idx, article in enumerate(articles, start=1):
-        if query.lower() in " ".join(article["keywords"]).lower():
-            results.append((idx, article))
-    return results
-
-def search_bp_files(query):
-    results = []
-    for idx, fname in enumerate(bp_files, start=1):
-        if query.lower() in fname.lower():
-            url = f"{GITHUB_BASE}{fname.replace(' ', '%20')}"
-            results.append((idx, fname, url))
-    return results
-
-
-# ======================================================
-# 4) Streamlit UI
-# ======================================================
+# =================================================
+# 3) Streamlit UI
+# =================================================
 st.title("📄 Article & Best Practices Search")
 
 query = st.text_input("🔍 Enter search term (use `BP:term` for Best Practices files)")
 
 if query:
     if query.lower().startswith("bp:"):
-        bp_term = query[3:].strip()
-        results = search_bp_files(bp_term)
-
+        term = query[3:].strip().lower()
+        st.subheader(f"🔎 Searching Best Practices for: {term}")
+        results = [f for f in bp_files if term in f.lower()]
         if results:
-            st.subheader(f"📂 BP File Results ({len(results)})")
-            for idx, fname, url in results:
-                st.markdown(f"**{idx}. [{fname}]({url})**")
+            for r in results:
+                st.write(f"- {r}")
         else:
-            st.warning("No matching BP files found.")
+            st.warning("No matches found in Best Practices files.")
     else:
-        results = search_articles(query)
-
+        term = query.strip().lower()
+        st.subheader(f"🔎 Searching Articles for: {term}")
+        results = [a for a in articles if term in a.lower()]
         if results:
-            st.subheader(f"📑 Article Results ({len(results)})")
-            for idx, article in results:
-                st.markdown(f"**Article {idx} — Keywords:** {', '.join(article['keywords'])}")
+            for i, r in enumerate(results, 1):
+                st.write(f"Article {i}: {r}")
         else:
-            st.warning("No matching articles found.")
+            st.warning("No matches found in Articles.")
+
+# Show Index button
+if st.button("Show Index"):
+    st.subheader("📑 Index of Articles")
+    for i, art in enumerate(articles, 1):
+        st.write(f"Article {i} — {art}")
+
+    st.subheader("📑 Index of Best Practices Files")
+    for i, f in enumerate(bp_files, 1):
+        st.write(f"BP File {i} — {f}")
