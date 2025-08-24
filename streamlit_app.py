@@ -4,6 +4,12 @@ import requests
 import streamlit as st
 
 # -------------------------------
+# Login Credentials
+# -------------------------------
+VALID_USERNAME = "SimbusRR"
+VALID_PASSWORD = "Simbus@2025"
+
+# -------------------------------
 # GitHub Auth (optional)
 # -------------------------------
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
@@ -64,7 +70,26 @@ def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
 
 # -------------------------------
-# Streamlit UI
+# Login Page
+# -------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("🔒 Login Required")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if username == VALID_USERNAME and password == VALID_PASSWORD:
+            st.session_state.logged_in = True
+            st.success("✅ Login successful! Please continue.")
+            st.rerun()
+        else:
+            st.error("❌ Invalid username or password")
+    st.stop()  # stop rest of app until logged in
+
+# -------------------------------
+# Main App (only after login)
 # -------------------------------
 st.title("📄 Article & Best Practices Search")
 
