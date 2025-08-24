@@ -1,124 +1,95 @@
-import re
-import pathlib
-import streamlit as st
-from collections import Counter
-import string
+import os
 import requests
+import streamlit as st
 
-st.set_page_config(page_title="Article Search", layout="wide")
-st.title("📄 Article & Best Practices Search")
+# -------------------------------
+# Load GitHub Token from secrets
+# -------------------------------
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
+HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
 
-# =================================================
-# 1) Load Articles (from articles.txt in repo)
-# =================================================
-FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
-if not FILE_PATH.exists():
-    st.error("❌ 'articles.txt' not found in the repo.")
-    st.stop()
+# -------------------------------
+# Repo Info
+# -------------------------------
+ARTICLE_FILE = "articles.txt"  # keep this file in the repo
+BP_REPO = "anildhankre/Kinaxis-BestPractices"
+BP_PATH = ""   # root folder
 
-text = FILE_PATH.read_text(encoding="utf-8")
-
-# Split into articles
-articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-articles = [a.strip() for a in articles if a.strip()]
-st.success(f"Loaded {len(articles)} articles from your shared file.")
-
-# =================================================
-# 2) Fetch Best Practices (PDFs) from GitHub
-# =================================================
-@st.cache_data
-def fetch_bp_files():
-    url = "https://api.github.com/repos/anildhankre/Kinaxis-BestPractices/contents/?ref=main"
+# -------------------------------
+# Load Articles
+# -------------------------------
+def load_articles():
     try:
-        res = requests.get(url)
-        if res.status_code == 200:
-            data = res.json()
-            return [
-                {
-                    "name": f["name"],
-                    "url": f["html_url"].replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-                }
-                for f in data if f["name"].lower().endswith(".pdf")
-            ]
-        else:
-            st.error(f"⚠️ Failed to fetch files from GitHub (Status {res.status_code}) → {url}")
-            return []
+        with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
+            articles = f.read().split("\n\n")
+        return articles
     except Exception as e:
-        st.error(f"⚠️ Error fetching BP files: {e}")
+        st.warning(f"⚠️ Failed to load articles file: {e}")
         return []
 
+# -------------------------------
+# Fetch Best Practices Files from GitHub
+# -------------------------------
+def fetch_bp_files():
+    url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref=main"
+    r = requests.get(url, headers=HEADERS)
+    if r.status_code == 200:
+        data = r.json()
+        pdfs = [f["name"] for f in data if f["name"].endswith(".pdf")]
+        return pdfs
+    else:
+        st.warning(f"⚠️ Failed to fetch files from GitHub (Status {r.status_code}) → {url}")
+        return []
+
+# -------------------------------
+# Search in Articles
+# -------------------------------
+def search_articles(articles, term):
+    results = []
+    for i, art in enumerate(articles, start=1):
+        if term.lower() in art.lower():
+            results.append((i, art.strip()[:200] + "..."))
+    return results
+
+# -------------------------------
+# Search in BP files
+# -------------------------------
+def search_bp(bp_files, term):
+    return [f for f in bp_files if term.lower() in f.lower()]
+
+# -------------------------------
+# Streamlit UI
+# -------------------------------
+st.title("📄 Article & Best Practices Search")
+
+# Load data
+articles = load_articles()
 bp_files = fetch_bp_files()
 
-# =================================================
-# 3) Keyword Extractor
-# =================================================
-def extract_keywords(article: str, top_n: int = 5):
-    words = article.lower().translate(str.maketrans("", "", string.punctuation)).split()
-    stopwords = {"the", "and", "is", "a", "of", "to", "in", "on", "for", "at", "as", "by", "an", "with", "from"}
-    filtered = [w for w in words if w not in stopwords and len(w) > 2]
-    common = Counter(filtered).most_common(top_n)
-    return [w for w, _ in common]
+query = st.text_input("🔍 Enter search term (use `BP:term` for Best Practices files)")
 
-# =================================================
-# 4) Highlight Helper
-# =================================================
-def highlight(snippet: str, q: str) -> str:
-    if not q:
-        return snippet
-    pattern = re.compile(re.escape(q), re.IGNORECASE)
-    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
-
-# =================================================
-# 5) Input (single entry)
-# =================================================
-query = st.text_input("🔎 Enter keywords OR type 'Show Index':").strip()
-
-# =================================================
-# 6) Logic
-# =================================================
-if query.lower() == "show index":
+if query.strip().lower() == "show index":
     st.subheader("📑 Index of Articles")
-    for i, article in enumerate(articles, start=1):
-        keywords = extract_keywords(article)
-        with st.expander(f"Article {i} — Keywords: {', '.join(keywords) if keywords else 'N/A'}"):
-            st.markdown(article[:500] + ("..." if len(article) > 500 else ""))  # preview
-
-    st.subheader("📑 Index of Best Practices (PDFs)")
-    for i, f in enumerate(bp_files, 1):
-        st.markdown(f"- [BP File {i} — {f['name']}]({f['url']})")
+    for i, art in enumerate(articles, start=1):
+        st.write(f"**Article {i}** — {art.strip()[:60]}...")
 
 elif query:
-    matched_articles = []
-    matched_pdfs = []
-
-    qlower = query.lower()
-
-    # --- Search Articles ---
-    for i, article in enumerate(articles, start=1):
-        if qlower in article.lower():
-            matched_articles.append((i, article))
-
-    # --- Search PDF file names ---
-    for f in bp_files:
-        if qlower in f["name"].lower():
-            matched_pdfs.append(f)
-
-    # --- Show Results ---
-    if matched_articles or matched_pdfs:
-        st.subheader(f"Search Results ({len(matched_articles)} Articles + {len(matched_pdfs)} PDFs)")
-
-        # Article results
-        for idx, (art_no, body) in enumerate(matched_articles, start=1):
-            with st.expander(f"Article Result {idx} (Article {art_no})"):
-                st.markdown(highlight(body, query))
-
-        # PDF results
-        if matched_pdfs:
-            st.markdown("### 📂 Matching Best Practice PDFs")
-            for f in matched_pdfs:
-                st.markdown(f"- [{highlight(f['name'], query)}]({f['url']})")
+    if query.lower().startswith("bp:"):
+        term = query[3:].strip()
+        st.subheader(f"🔎 Best Practices Search for: {term}")
+        results = search_bp(bp_files, term)
+        if results:
+            for r in results:
+                st.write(f"- {r}")
+        else:
+            st.info("No matching Best Practice files found.")
     else:
-        st.warning("No results found in either Articles or PDFs. Try a different word.")
-
+        st.subheader(f"🔎 Article Search for: {query}")
+        results = search_articles(articles, query)
+        if results:
+            for idx, snippet in results:
+                st.markdown(f"**Article {idx}:** {snippet}")
+        else:
+            st.info("No matching articles found.")
 else:
-    st.info("Type keywords to search, or type **Show Index** to view all articles & PDFs.")
+    st.write("👉 Type a search term above, or `Show Index` to see all articles.")
