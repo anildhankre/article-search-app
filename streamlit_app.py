@@ -1,46 +1,48 @@
+import re
+import pathlib
 import streamlit as st
-import requests
-import os
 
-# Load Hugging Face API key from secrets
-HF_API_KEY = st.secrets["HF_API_KEY"]
+st.set_page_config(page_title="Article Search", layout="wide")
+st.title("📄 Article Search (Shared File)")
 
-# Hugging Face model (free)
-MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2"
-API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
-HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
+# 1) Read your shared file that sits in the same repo
+FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
+if not FILE_PATH.exists():
+    st.error("❌ 'articles.txt' not found in the repo (same folder as streamlit_app.py).")
+    st.stop()
 
-def query_huggingface(prompt):
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 300}
-    }
-    response = requests.post(API_URL, headers=HEADERS, json=payload)
-    if response.status_code == 200:
-        data = response.json()
-        # HuggingFace returns a list of dicts
-        return data[0]["generated_text"]
+text = FILE_PATH.read_text(encoding="utf-8")
+
+# 2) Split into articles by your delimiters: ```````````, ==========, -------
+articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+articles = [a.strip() for a in articles if a.strip()]
+
+st.success(f"Loaded {len(articles)} articles from your shared file.")
+
+# 3) Search box
+query = st.text_input("🔎 Enter keywords (case-insensitive):").strip()
+
+def highlight(snippet: str, q: str) -> str:
+    if not q:
+        return snippet
+    # simple case-insensitive bold highlight
+    pattern = re.compile(re.escape(q), re.IGNORECASE)
+    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
+
+if query:
+    # 4) Keyword search
+    matched = []
+    qlower = query.lower()
+    for i, article in enumerate(articles, start=1):
+        if qlower in article.lower():
+            matched.append((i, article))
+
+    if matched:
+        st.subheader(f"Search Results ({len(matched)})")
+        for idx, (art_no, body) in enumerate(matched, start=1):
+            with st.expander(f"Result {idx} (Article {art_no})"):
+                st.markdown(highlight(body, query))
     else:
-        return f"Error: {response.status_code} - {response.text}"
-
-# --- Streamlit UI ---
-st.title("📄 Article Search with Hugging Face")
-
-# Load your local articles.txt
-with open("articles.txt", "r", encoding="utf-8") as f:
-    articles = f.read()
-
-user_input = st.text_input("Ask something from articles.txt")
-
-if user_input:
-    prompt = f"""
-    Answer the following question using only this article content:
-
-    {articles}
-
-    Question: {user_input}
-    """
-    with st.spinner("Thinking..."):
-        answer = query_huggingface(prompt)
-    st.write("### Answer:")
-    st.write(answer)
+        st.warning("No results found. Try a different word.")
+else:
+    st.info("Type something above to search your shared knowledge base.")
