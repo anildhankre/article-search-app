@@ -3,12 +3,12 @@ import json
 import requests
 
 # ======================================================
-# 1) Load Articles (from uploaded/shared JSON file)
+# 1) Load Articles (from articles.txt)
 # ======================================================
 @st.cache_data
 def load_articles():
     try:
-        with open("articles.json", "r", encoding="utf-8") as f:
+        with open("articles.txt", "r", encoding="utf-8") as f:
             articles = json.load(f)
         return articles
     except Exception as e:
@@ -24,10 +24,11 @@ articles = load_articles()
 @st.cache_data
 def get_bp_files():
     repo_owner = "anildhankre"
-    repo_name = "Kinaxis-BestPractices"
+    repo_name = "article-search-app"
+    folder_path = "Kinaxis-BestPractices"   # ✅ correct folder name
     branch = "main"
 
-    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents"
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{folder_path}?ref={branch}"
     response = requests.get(url)
 
     if response.status_code == 200:
@@ -35,11 +36,11 @@ def get_bp_files():
         pdfs = [f["name"] for f in files if f["name"].lower().endswith(".pdf")]
         return pdfs
     else:
-        st.error(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code})")
+        st.error(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code}) → {url}")
         return []
 
 bp_files = get_bp_files()
-GITHUB_BASE = "https://github.com/anildhankre/Kinaxis-BestPractices/blob/main/"
+GITHUB_BASE = "https://github.com/anildhankre/article-search-app/blob/main/Kinaxis-BestPractices/"
 
 
 # ======================================================
@@ -56,7 +57,7 @@ def search_bp_files(query):
     results = []
     for idx, fname in enumerate(bp_files, start=1):
         if query.lower() in fname.lower():
-            url = f"{GITHUB_BASE}{fname.replace(' ', '%20')}"  # encode spaces
+            url = f"{GITHUB_BASE}{fname.replace(' ', '%20')}"
             results.append((idx, fname, url))
     return results
 
@@ -70,9 +71,6 @@ query = st.text_input("🔍 Enter search term (use `BP:term` for Best Practices 
 
 if query:
     if query.lower().startswith("bp:"):
-        # ------------------------------
-        # BP FILE SEARCH
-        # ------------------------------
         bp_term = query[3:].strip()
         results = search_bp_files(bp_term)
 
@@ -83,9 +81,6 @@ if query:
         else:
             st.warning("No matching BP files found.")
     else:
-        # ------------------------------
-        # ARTICLE SEARCH
-        # ------------------------------
         results = search_articles(query)
 
         if results:
