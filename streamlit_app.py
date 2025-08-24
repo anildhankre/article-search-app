@@ -1,104 +1,124 @@
-import os
 import re
+import pathlib
 import requests
 import streamlit as st
+from collections import Counter
+import string
 
-# -------------------------------
-# GitHub Auth (optional)
-# -------------------------------
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
-HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+# -------------------------
+# 🔐 Security Layer
+# -------------------------
+st.set_page_config(page_title="Article & Best Practices Search", layout="wide")
 
-# -------------------------------
-# Repo Info
-# -------------------------------
-ARTICLE_FILE = "articles.txt"  # keep in repo
-BP_REPO = "anildhankre/Kinaxis-BestPractices"
-BP_BRANCH = "main"
-BP_PATH = ""   # folder where PDFs live
+# Hardcoded credentials
+USERNAME = "SimbusRR"
+PASSWORD = "Simbus@2025"
 
-# -------------------------------
-# Load Articles
-# -------------------------------
-def load_articles():
-    try:
-        with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
-            text = f.read()
-        # split by lines of -----, =====, or backticks
-        articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-        # clean junk
-        articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
-        return articles
-    except Exception as e:
-        st.warning(f"⚠️ Failed to load articles file: {e}")
-        return []
+# Session state for login
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-# -------------------------------
-# Fetch Best Practices Files
-# -------------------------------
-def fetch_bp_files():
-    url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref={BP_BRANCH}"
-    r = requests.get(url, headers=HEADERS)
-    if r.status_code == 200:
-        data = r.json()
-        pdfs = [{"name": f["name"], "url": f["download_url"]} for f in data if f["name"].endswith(".pdf")]
-        return pdfs
-    else:
-        st.warning(f"⚠️ Failed to fetch files from GitHub (Status {r.status_code}) → {url}")
-        return []
+def login_screen():
+    st.title("🔒 Secure Login")
+    st.write("Please enter your credentials to access the app.")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if username == USERNAME and password == PASSWORD:
+            st.session_state.authenticated = True
+            st.success("✅ Login successful!")
+        else:
+            st.error("❌ Invalid username or password")
 
-# -------------------------------
-# Search in Articles
-# -------------------------------
-def search_articles(articles, term):
-    results = []
-    for i, art in enumerate(articles, start=1):
-        if term.lower() in art.lower():
-            results.append((i, art.strip()))
-    return results
+if not st.session_state.authenticated:
+    login_screen()
+    st.stop()  # 🚫 stop the app until login succeeds
 
-# -------------------------------
-# Search in Best Practices
-# -------------------------------
-def search_bp(bp_files, term):
-    return [f for f in bp_files if term.lower() in f["name"].lower()]
-
-# -------------------------------
-# Streamlit UI
-# -------------------------------
+# -------------------------
+# 🔹 Main App (after login)
+# -------------------------
 st.title("📄 Article & Best Practices Search")
 
-articles = load_articles()
-bp_files = fetch_bp_files()
+# 1) Load articles from local file
+FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
+articles = []
+if FILE_PATH.exists():
+    text = FILE_PATH.read_text(encoding="utf-8")
+    articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+    articles = [a.strip() for a in articles if a.strip()]
+    st.success(f"Loaded {len(articles)} articles from your shared file.")
+else:
+    st.error("❌ 'articles.txt' not found in the repo.")
 
-query = st.text_input("🔍 Enter search term (or type `Show Index` to see all articles)")
+# 2) Fetch Best Practices files from GitHub
+GITHUB_OWNER = "anildhankre"
+GITHUB_REPO = "Kinaxis-BestPractices"
+GITHUB_PATH = ""  # root folder
+API_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{GITHUB_PATH}?ref=main"
 
-if query.strip().lower() == "show index":
+bp_files = []
+try:
+    res = requests.get(API_URL)
+    if res.status_code == 200:
+        bp_files = [f for f in res.json() if f["name"].endswith(".pdf")]
+        st.success(f"Fetched {len(bp_files)} Best Practices PDFs from GitHub.")
+    else:
+        st.warning(f"⚠️ Failed to fetch files from GitHub (Status {res.status_code}) → {API_URL}")
+except Exception as e:
+    st.error(f"⚠️ GitHub fetch error: {e}")
+
+# -----------------
+# 🔹 Keyword Extractor
+# -----------------
+def extract_keywords(article: str, top_n: int = 5):
+    words = article.lower().translate(str.maketrans("", "", string.punctuation)).split()
+    stopwords = {"the", "and", "is", "a", "of", "to", "in", "on", "for", "at", "as", "by", "an", "with", "from"}
+    filtered = [w for w in words if w not in stopwords and len(w) > 2]
+    common = Counter(filtered).most_common(top_n)
+    return [w for w, _ in common]
+
+# -----------------
+# 🔹 Input box (single entry point)
+# -----------------
+query = st.text_input("🔍 Enter search term (shows both Articles & Best Practices):").strip()
+
+def highlight(snippet: str, q: str) -> str:
+    if not q:
+        return snippet
+    pattern = re.compile(re.escape(q), re.IGNORECASE)
+    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
+
+# -----------------
+# 🔹 Search Logic
+# -----------------
+if query.lower() == "show index":
     st.subheader("📑 Index of Articles")
-    for i, art in enumerate(articles, start=1):
-        st.write(f"**Article {i}** — {art.strip()[:80]}...")
+    for i, article in enumerate(articles, start=1):
+        keywords = extract_keywords(article)
+        with st.expander(f"Article {i} — Keywords: {', '.join(keywords) if keywords else 'N/A'}"):
+            st.markdown(article[:1000] + ("..." if len(article) > 1000 else ""))  # longer preview
 
 elif query:
-    st.subheader(f"🔎 Search results for: {query}")
+    # Article search
+    matched_articles = [(i, a) for i, a in enumerate(articles, start=1) if query.lower() in a.lower()]
+    
+    # BP search
+    matched_bp = [f for f in bp_files if query.lower() in f["name"].lower()]
+    
+    # Show results
+    if matched_articles:
+        st.subheader(f"📄 Article Results ({len(matched_articles)})")
+        for idx, (art_no, body) in enumerate(matched_articles, start=1):
+            with st.expander(f"Result {idx} (Article {art_no})"):
+                st.markdown(highlight(body, query))
 
-    # --- Articles ---
-    article_results = search_articles(articles, query)
-    if article_results:
-        st.markdown("### 📚 Articles")
-        for idx, full_text in article_results:
-            with st.expander(f"Article {idx} (click to expand)"):
-                st.markdown(full_text)
-    else:
-        st.info("No matching articles found.")
+    if matched_bp:
+        st.subheader(f"📘 Best Practices Results ({len(matched_bp)})")
+        for f in matched_bp:
+            file_url = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/blob/main/{f['name']}?raw=true"
+            st.markdown(f"- [{f['name']}]({file_url})")
 
-    # --- Best Practices ---
-    bp_results = search_bp(bp_files, query)
-    if bp_results:
-        st.markdown("### 📘 Best Practices")
-        for r in bp_results:
-            st.markdown(f"- [{r['name']}]({r['url']})")
-    else:
-        st.info("No matching Best Practice files found.")
-
+    if not matched_articles and not matched_bp:
+        st.warning("No results found. Try a different word.")
 else:
-    st.write("👉 Type a search term above, or `Show Index` to see all articles.")
+    st.info("Type keywords to search, or type **Show Index** to view all articles.")
