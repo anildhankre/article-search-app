@@ -1374,6 +1374,82 @@ For automation chain design, the chain should start by creating a temporary chil
 
 ````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
+CurrencyConversionActual table
+Contains currency conversion rates, which are available in all scenarios. The latest rate with a conversion date on or before the current date is used to convert values. If a rate is modified, the same modification is present in all scenarios.
+
+This table is a system table that is updated similarly to an input table. Updated rates should be brought in to this table using data updates, which makes the updated rates available in all scenarios.
+
+If a new currency is added, you must update the data extracts and integration to include the conversion rates for the new currency, which ensures the currency returns meaningful values.
+
+Any conversion rates specified for the base currency are ignored.
+
+The data in this table is updated by performing data updates. However, this table is updated only if the data update provides data for the root scenario. This ensures actual conversion rates are not accidentally added. Data updates can only add records to this table.
+
+If multiple data updates provide a record for a specific date, each of those records are added to the table. If multiple conversion rates are provided for a date, the rate that is used to perform conversions cannot be predicted, which can result in incorrect results. When you provide data for this table, you should ensure only one rate is provided for a date.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````
+
+RParameterName table
+The RParameterName table is used to identify and maintain function names and the arguments that relate to each function in the R programing language.
+
+````````````````````````````````````````````````````````````````````````````````````````````
+
+Activity(Mfg) table
+there is another Activity table, Activity table in the ProcOrch namespace, which defines all the individual work items that together form a process
+
+Maestro includes worksheets based on the Activity table that combine all OnHand, Supply, and Demand information
+
+These worksheets can be used for projecting inventory balance or generating a complete transaction event report.
+The Activity table only presents events or activities that are processed by netting 
+
+
+Generation of TimeUnit records
+Maestro creates Activity records when there is a transaction to report. For example, if an unsatisfied demand is satisfied with available inventory, two Activity records are created. One that shows the demand and the other showing the supply.
+
+
+#Field: AdjustedDemandDate: 	
+For demands, this returns the DemandDate less the part's safety lead time (note that any safety lead time at the part source level is not included). In addition, safety stock can impact this date by expediting the demand earlier in order to fulfill safety stock requirements.
+
+For supplies, this is the same as RecommendedDate (which considers safety lead time from both the part and part source).
+
+#AssociatedDate:The PromiseDate for demands, CalcStartDate for supply, RunDate for on hand.
+
+#BalanceDelta
+
+The change in the inventory level due to the original quantity of the activity.
+
+#DemandDate: For supplies, date of the earliest demand matched by netting. For demands, ReschedDate.
+
+```````````````````````````````````````````````````````````````````````````````````````````````
+
+ConsensusForecast table
+The ConsensusForecast table contains the consensus forecast generated from the sales and operations planning process in Maestro. Each record in this table contains a calculated forecast amount for a part and customer combination on a given forecast date.
+
+
+ The weight assigned to a particular forecast category when calculating the consensus forecast for a part and customer combination is determined by the ConsensusForecastWeight field in one of the following tables:
+
+HistoricalDemandHeaderTimePhasedAttributes
+HistoricalDemandHeaderRollingWeight
+HistoricalDemandHeader
+HistoricalDemandCategoryRollingWeight
+HistoricalDemandCategory
+
+Note that only categories with a ConsensusForecastWeight value greater than zero are used in calculating the consensus forecast values reported in this tabl
+
+Consensus forecast quantities are subsequently reported in the Forecast table (subject to any forecast spreading logic) with a ForecastSource value of ConsensusForecast. Availability of the forecast is given in the CTPForecast table, and details of all supplies used to satisfy the forecast can be seen in the WhereConsumedForForecast table.
+
+
+If the ForecastDetail table contains a record for a given date, part, and customer where Header.Category.Type.ProcessingRule is set to ForecastOverride or ReBalancingForecastOverride, then that record value is automatically reported in this table in the OverrideQuantity field instead of the calculated consensus forecast.
+
+Note:ConsensusForecast records can only be generated for parts where the PartType.ProcessRule value is set to either MPS or MPSConfig.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
+
+
 
 
 
