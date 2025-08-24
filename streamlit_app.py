@@ -1,74 +1,69 @@
+import re
+import pathlib
 import streamlit as st
-import requests
+from collections import Counter
+import string
 
-# =================================================
-# 1) Load Articles (from articles.txt)
-# =================================================
-@st.cache_data
-def load_articles():
-    try:
-        with open("articles.txt", "r", encoding="utf-8") as f:
-            articles = [line.strip() for line in f if line.strip()]
-        return articles
-    except Exception as e:
-        st.error(f"⚠️ Failed to load articles file: {e}")
-        return []
+st.set_page_config(page_title="Article Search", layout="wide")
+st.title("📄 Article Search (Shared File)")
 
-articles = load_articles()
+# 1) Load file
+FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
+if not FILE_PATH.exists():
+    st.error("❌ 'articles.txt' not found in the repo.")
+    st.stop()
 
-# =================================================
-# 2) Fetch Best Practice (BP) Files from Kinaxis-BestPractices Repo
-# =================================================
-@st.cache_data
-def fetch_bp_files():
-    try:
-        url = "https://api.github.com/repos/anildhankre/Kinaxis-BestPractices/contents/?ref=main"
-        res = requests.get(url)
-        if res.status_code == 200:
-            data = res.json()
-            return [f["name"] for f in data if f["name"].lower().endswith(".pdf")]
-        else:
-            st.error(f"⚠️ Failed to fetch files from GitHub (Status {res.status_code}) → {url}")
-            return []
-    except Exception as e:
-        st.error(f"⚠️ Error fetching files: {e}")
-        return []
+text = FILE_PATH.read_text(encoding="utf-8")
 
-bp_files = fetch_bp_files()
+# 2) Split into articles
+articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+articles = [a.strip() for a in articles if a.strip()]
+st.success(f"Loaded {len(articles)} articles from your shared file.")
 
-# =================================================
-# 3) Streamlit UI
-# =================================================
-st.title("📄 Article & Best Practices Search")
+# -----------------
+# 🔹 Keyword Extractor
+# -----------------
+def extract_keywords(article: str, top_n: int = 5):
+    words = article.lower().translate(str.maketrans("", "", string.punctuation)).split()
+    stopwords = {"the", "and", "is", "a", "of", "to", "in", "on", "for", "at", "as", "by", "an", "with", "from"}
+    filtered = [w for w in words if w not in stopwords and len(w) > 2]
+    common = Counter(filtered).most_common(top_n)
+    return [w for w, _ in common]
 
-query = st.text_input("🔍 Enter search term (use `BP:term` for Best Practices files)")
+# -----------------
+# 🔹 Input box (single entry point)
+# -----------------
+query = st.text_input("🔎 Enter keywords OR type 'Show Index':").strip()
 
-if query:
-    if query.lower().startswith("bp:"):
-        term = query[3:].strip().lower()
-        st.subheader(f"🔎 Searching Best Practices for: {term}")
-        results = [f for f in bp_files if term in f.lower()]
-        if results:
-            for r in results:
-                st.write(f"- {r}")
-        else:
-            st.warning("No matches found in Best Practices files.")
-    else:
-        term = query.strip().lower()
-        st.subheader(f"🔎 Searching Articles for: {term}")
-        results = [a for a in articles if term in a.lower()]
-        if results:
-            for i, r in enumerate(results, 1):
-                st.write(f"Article {i}: {r}")
-        else:
-            st.warning("No matches found in Articles.")
+def highlight(snippet: str, q: str) -> str:
+    if not q:
+        return snippet
+    pattern = re.compile(re.escape(q), re.IGNORECASE)
+    return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
 
-# Show Index button
-if st.button("Show Index"):
+# -----------------
+# 🔹 Logic
+# -----------------
+if query.lower() == "show index":
     st.subheader("📑 Index of Articles")
-    for i, art in enumerate(articles, 1):
-        st.write(f"Article {i} — {art}")
+    for i, article in enumerate(articles, start=1):
+        keywords = extract_keywords(article)
+        with st.expander(f"Article {i} — Keywords: {', '.join(keywords) if keywords else 'N/A'}"):
+            st.markdown(article[:500] + ("..." if len(article) > 500 else ""))  # preview
 
-    st.subheader("📑 Index of Best Practices Files")
-    for i, f in enumerate(bp_files, 1):
-        st.write(f"BP File {i} — {f}")
+elif query:
+    matched = []
+    qlower = query.lower()
+    for i, article in enumerate(articles, start=1):
+        if qlower in article.lower():
+            matched.append((i, article))
+
+    if matched:
+        st.subheader(f"Search Results ({len(matched)})")
+        for idx, (art_no, body) in enumerate(matched, start=1):
+            with st.expander(f"Result {idx} (Article {art_no})"):
+                st.markdown(highlight(body, query))
+    else:
+        st.warning("No results found. Try a different word.")
+else:
+    st.info("Type keywords to search, or type **Show Index** to view all articles.")
