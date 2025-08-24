@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import streamlit as st
 
@@ -13,7 +14,8 @@ HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
 # -------------------------------
 ARTICLE_FILE = "articles.txt"  # keep this file in the repo
 BP_REPO = "anildhankre/Kinaxis-BestPractices"
-BP_PATH = ""   # root folder
+BP_BRANCH = "main"
+BP_PATH = ""   # root folder of PDFs
 
 # -------------------------------
 # Load Articles
@@ -21,7 +23,11 @@ BP_PATH = ""   # root folder
 def load_articles():
     try:
         with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
-            articles = f.read().split("\n\n")
+            text = f.read()
+        # split on common separators (-----, =====, ````)
+        articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+        # clean out junk ones
+        articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
         return articles
     except Exception as e:
         st.warning(f"⚠️ Failed to load articles file: {e}")
@@ -31,11 +37,11 @@ def load_articles():
 # Fetch Best Practices Files from GitHub
 # -------------------------------
 def fetch_bp_files():
-    url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref=main"
+    url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref={BP_BRANCH}"
     r = requests.get(url, headers=HEADERS)
     if r.status_code == 200:
         data = r.json()
-        pdfs = [f["name"] for f in data if f["name"].endswith(".pdf")]
+        pdfs = [{"name": f["name"], "url": f["download_url"]} for f in data if f["name"].endswith(".pdf")]
         return pdfs
     else:
         st.warning(f"⚠️ Failed to fetch files from GitHub (Status {r.status_code}) → {url}")
@@ -55,7 +61,7 @@ def search_articles(articles, term):
 # Search in BP files
 # -------------------------------
 def search_bp(bp_files, term):
-    return [f for f in bp_files if term.lower() in f.lower()]
+    return [f for f in bp_files if term.lower() in f["name"].lower()]
 
 # -------------------------------
 # Streamlit UI
@@ -80,7 +86,7 @@ elif query:
         results = search_bp(bp_files, term)
         if results:
             for r in results:
-                st.write(f"- {r}")
+                st.markdown(f"- [{r['name']}]({r['url']})")
         else:
             st.info("No matching Best Practice files found.")
     else:
