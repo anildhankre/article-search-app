@@ -4,7 +4,7 @@ import requests
 import streamlit as st
 
 # -------------------------------
-# Load GitHub Token from secrets
+# GitHub Auth (optional)
 # -------------------------------
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
 HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
@@ -12,10 +12,10 @@ HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
 # -------------------------------
 # Repo Info
 # -------------------------------
-ARTICLE_FILE = "articles.txt"  # keep this file in the repo
+ARTICLE_FILE = "articles.txt"  # keep in repo
 BP_REPO = "anildhankre/Kinaxis-BestPractices"
 BP_BRANCH = "main"
-BP_PATH = ""   # root folder of PDFs
+BP_PATH = ""   # folder where PDFs live
 
 # -------------------------------
 # Load Articles
@@ -24,9 +24,9 @@ def load_articles():
     try:
         with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
             text = f.read()
-        # split on common separators (-----, =====, ````)
+        # split by lines of -----, =====, or backticks
         articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-        # clean out junk ones
+        # clean junk
         articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
         return articles
     except Exception as e:
@@ -34,7 +34,7 @@ def load_articles():
         return []
 
 # -------------------------------
-# Fetch Best Practices Files from GitHub
+# Fetch Best Practices Files
 # -------------------------------
 def fetch_bp_files():
     url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref={BP_BRANCH}"
@@ -54,11 +54,11 @@ def search_articles(articles, term):
     results = []
     for i, art in enumerate(articles, start=1):
         if term.lower() in art.lower():
-            results.append((i, art.strip()[:200] + "..."))
+            results.append((i, art.strip()))
     return results
 
 # -------------------------------
-# Search in BP files
+# Search in Best Practices
 # -------------------------------
 def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
@@ -68,34 +68,37 @@ def search_bp(bp_files, term):
 # -------------------------------
 st.title("📄 Article & Best Practices Search")
 
-# Load data
 articles = load_articles()
 bp_files = fetch_bp_files()
 
-query = st.text_input("🔍 Enter search term (use `BP:term` for Best Practices files)")
+query = st.text_input("🔍 Enter search term (or type `Show Index` to see all articles)")
 
 if query.strip().lower() == "show index":
     st.subheader("📑 Index of Articles")
     for i, art in enumerate(articles, start=1):
-        st.write(f"**Article {i}** — {art.strip()[:60]}...")
+        st.write(f"**Article {i}** — {art.strip()[:80]}...")
 
 elif query:
-    if query.lower().startswith("bp:"):
-        term = query[3:].strip()
-        st.subheader(f"🔎 Best Practices Search for: {term}")
-        results = search_bp(bp_files, term)
-        if results:
-            for r in results:
-                st.markdown(f"- [{r['name']}]({r['url']})")
-        else:
-            st.info("No matching Best Practice files found.")
+    st.subheader(f"🔎 Search results for: {query}")
+
+    # --- Articles ---
+    article_results = search_articles(articles, query)
+    if article_results:
+        st.markdown("### 📚 Articles")
+        for idx, full_text in article_results:
+            with st.expander(f"Article {idx} (click to expand)"):
+                st.markdown(full_text)
     else:
-        st.subheader(f"🔎 Article Search for: {query}")
-        results = search_articles(articles, query)
-        if results:
-            for idx, snippet in results:
-                st.markdown(f"**Article {idx}:** {snippet}")
-        else:
-            st.info("No matching articles found.")
+        st.info("No matching articles found.")
+
+    # --- Best Practices ---
+    bp_results = search_bp(bp_files, query)
+    if bp_results:
+        st.markdown("### 📘 Best Practices")
+        for r in bp_results:
+            st.markdown(f"- [{r['name']}]({r['url']})")
+    else:
+        st.info("No matching Best Practice files found.")
+
 else:
     st.write("👉 Type a search term above, or `Show Index` to see all articles.")
