@@ -1447,7 +1447,65 @@ Note:ConsensusForecast records can only be generated for parts where the PartTyp
 `````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
 
+The user wants all conversion rates for all currencies from the CurrencyConversionActual system table, but cannot create a worksheet directly from it.
 
+Their current workbook only shows conversion rates for a single selected currency (via a list variable), and they cannot change or copy its filtering.
+
+Answers provided:
+
+Officially, the only way to update the CurrencyConversionActual table is through Data Update to the Enterprise scenario.
+
+However, it was found you can also:
+
+Copy the Currency Conversion Rates standard workbook.
+
+Use the Conversion Current worksheet.
+
+Remove filtering and conditional hiding to see all records.
+
+Optionally create a new workbook and use Copy Worksheet from another workbook.
+
+Disable GroupBy, remove filtering, then Date and Rate become editable.
+
+You can insert new records, but not delete existing ones.
+
+⚠️ Caution: Direct editing is powerful but risky — you must fully understand the impact before making changes.
+
+👉 In short: Direct WS creation from CurrencyConversionActual isn’t possible, but you can copy/modify the Conversion Current sheet from the standard workbook to access and edit rates.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````
+
+🚨 Issue
+
+When running a Scheduled Task in RapidResponse, users encounter errors such as:
+
+Autocreate failure: Cannot use an invalid autocreated record on table Mfg::DemandOrder.
+
+Autocreate failure: Cannot resolve reference field Customer to database table Customer, no values specified and no default.
+
+No changes were made to the workbook or the scheduled task before the issue appeared.
+
+✅ Root Cause
+
+The issue arises because of an Outer Join condition in the workbook.
+
+Outer Join pulls all records from both tables.
+
+This can include records with missing references (invalid or null values), leading to autocreate failures.
+
+🛠 Resolution
+
+Replace the Outer Join with an Inner Join in the source worksheet.
+
+Inner Join ensures only matching records from both tables are included.
+
+This prevents invalid or missing references and resolves the autocreate error.
+
+👉 In short:
+Switching from Outer Join to Inner Join in the workbook resolves the scheduled task autocreate failure.
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
 
 
