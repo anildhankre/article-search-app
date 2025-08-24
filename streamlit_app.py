@@ -1,109 +1,104 @@
-import streamlit as st
-import requests
 import os
-import json
+import re
+import requests
+import streamlit as st
 
 # -------------------------------
-# ✅ Login Credentials
+# GitHub Auth (optional)
 # -------------------------------
-VALID_USERNAME = "SimbusRR"
-VALID_PASSWORD = "Simbus@2025"
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
+HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
 
 # -------------------------------
-# 🔑 Login Screen
+# Repo Info
 # -------------------------------
-def login_screen():
-    st.title("🔒 Secure Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if username == VALID_USERNAME and password == VALID_PASSWORD:
-            st.session_state.authenticated = True
-            st.success("✅ Login successful!")
-            st.rerun()   # go to main app
-        else:
-            st.error("❌ Invalid username or password")
+ARTICLE_FILE = "articles.txt"  # keep in repo
+BP_REPO = "anildhankre/Kinaxis-BestPractices"
+BP_BRANCH = "main"
+BP_PATH = ""   # folder where PDFs live
 
 # -------------------------------
-# 📄 Load Articles from JSON file
+# Load Articles
 # -------------------------------
 def load_articles():
     try:
-        with open("articles.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
+        with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
+            text = f.read()
+        # split by lines of -----, =====, or backticks
+        articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+        # clean junk
+        articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
+        return articles
+    except Exception as e:
+        st.warning(f"⚠️ Failed to load articles file: {e}")
         return []
 
 # -------------------------------
-# 📑 Fetch Best Practices from GitHub
+# Fetch Best Practices Files
 # -------------------------------
-def fetch_best_practices():
-    url = "https://api.github.com/repos/anildhankre/Kinaxis-BestPractices/contents/?ref=main"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()
+def fetch_bp_files():
+    url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref={BP_BRANCH}"
+    r = requests.get(url, headers=HEADERS)
+    if r.status_code == 200:
+        data = r.json()
+        pdfs = [{"name": f["name"], "url": f["download_url"]} for f in data if f["name"].endswith(".pdf")]
+        return pdfs
     else:
-        st.warning(f"⚠️ Failed to fetch files from GitHub (Status {response.status_code}) → {url}")
+        st.warning(f"⚠️ Failed to fetch files from GitHub (Status {r.status_code}) → {url}")
         return []
 
 # -------------------------------
-# 🔍 Search Function
+# Search in Articles
 # -------------------------------
-def search_articles_and_bp(query, articles, bp_files):
+def search_articles(articles, term):
     results = []
-
-    # Search Articles
-    for idx, art in enumerate(articles, start=1):
-        if query.lower() in art.get("summary", "").lower() or query.lower() in art.get("resolution", "").lower():
-            results.append(f"📄 Article {idx}: {art.get('summary', 'No summary')}")
-
-    # Search Best Practices
-    for file in bp_files:
-        if query.lower() in file["name"].lower():
-            results.append(f"📘 Best Practice: [{file['name']}]({file['html_url']})")
-
+    for i, art in enumerate(articles, start=1):
+        if term.lower() in art.lower():
+            results.append((i, art.strip()))
     return results
 
 # -------------------------------
-# 🏠 Main Application
+# Search in Best Practices
 # -------------------------------
-def main_app():
-    st.title("📄 Article & Best Practices Search")
+def search_bp(bp_files, term):
+    return [f for f in bp_files if term.lower() in f["name"].lower()]
 
-    # Logout button
-    if st.button("🚪 Logout"):
-        st.session_state.authenticated = False
-        st.rerun()
+# -------------------------------
+# Streamlit UI
+# -------------------------------
+st.title("📄 Article & Best Practices Search")
 
-    # Load Articles
-    articles = load_articles()
-    if articles:
-        st.success(f"✅ Loaded {len(articles)} articles from your shared file.")
+articles = load_articles()
+bp_files = fetch_bp_files()
+
+query = st.text_input("🔍 Enter search term (or type `Show Index` to see all articles)")
+
+if query.strip().lower() == "show index":
+    st.subheader("📑 Index of Articles")
+    for i, art in enumerate(articles, start=1):
+        st.write(f"**Article {i}** — {art.strip()[:80]}...")
+
+elif query:
+    st.subheader(f"🔎 Search results for: {query}")
+
+    # --- Articles ---
+    article_results = search_articles(articles, query)
+    if article_results:
+        st.markdown("### 📚 Articles")
+        for idx, full_text in article_results:
+            with st.expander(f"Article {idx} (click to expand)"):
+                st.markdown(full_text)
     else:
-        st.error("❌ No articles found. Please upload or check articles.json")
+        st.info("No matching articles found.")
 
-    # Load Best Practices from GitHub
-    bp_files = fetch_best_practices()
+    # --- Best Practices ---
+    bp_results = search_bp(bp_files, query)
+    if bp_results:
+        st.markdown("### 📘 Best Practices")
+        for r in bp_results:
+            st.markdown(f"- [{r['name']}]({r['url']})")
+    else:
+        st.info("No matching Best Practice files found.")
 
-    # Search box
-    query = st.text_input("🔍 Enter search term (searches both Articles & Best Practices)")
-    if query:
-        results = search_articles_and_bp(query, articles, bp_files)
-        if results:
-            st.subheader("🔎 Search Results")
-            for r in results:
-                st.markdown(r, unsafe_allow_html=True)
-        else:
-            st.info("ℹ️ No matching results found.")
-
-# -------------------------------
-# 🚀 App Execution
-# -------------------------------
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-if not st.session_state.authenticated:
-    login_screen()
 else:
-    main_app()
+    st.write("👉 Type a search term above, or `Show Index` to see all articles.")
