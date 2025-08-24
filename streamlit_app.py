@@ -1,36 +1,54 @@
 import re
 import pathlib
 import streamlit as st
+from collections import Counter
+import string
 
 st.set_page_config(page_title="Article Search", layout="wide")
 st.title("📄 Article Search (Shared File)")
 
-# 1) Read your shared file that sits in the same repo
+# 1) Load file
 FILE_PATH = pathlib.Path(__file__).parent / "articles.txt"
 if not FILE_PATH.exists():
-    st.error("❌ 'articles.txt' not found in the repo (same folder as streamlit_app.py).")
+    st.error("❌ 'articles.txt' not found in the repo.")
     st.stop()
 
 text = FILE_PATH.read_text(encoding="utf-8")
 
-# 2) Split into articles by your delimiters: ```````````, ==========, -------
+# 2) Split into articles
 articles = re.split(r'`{5,}|={5,}|-{5,}', text)
 articles = [a.strip() for a in articles if a.strip()]
-
 st.success(f"Loaded {len(articles)} articles from your shared file.")
 
-# 3) Search box
-query = st.text_input("🔎 Enter keywords (case-insensitive):").strip()
+# -----------------
+# 🔹 Build Index
+# -----------------
+def extract_keywords(article: str, top_n: int = 5):
+    words = article.lower().translate(str.maketrans("", "", string.punctuation)).split()
+    stopwords = {"the", "and", "is", "a", "of", "to", "in", "on", "for", "at", "as", "by", "an", "with", "from"}
+    filtered = [w for w in words if w not in stopwords and len(w) > 2]
+    common = Counter(filtered).most_common(top_n)
+    return [w for w, _ in common]
+
+st.subheader("📑 Index of Articles")
+for i, article in enumerate(articles, start=1):
+    keywords = extract_keywords(article)
+    with st.expander(f"Article {i} — Keywords: {', '.join(keywords) if keywords else 'N/A'}"):
+        st.markdown(article[:500] + ("..." if len(article) > 500 else ""))  # preview
+
+# -----------------
+# 🔹 Search
+# -----------------
+st.subheader("🔎 Search")
+query = st.text_input("Enter keywords (case-insensitive):").strip()
 
 def highlight(snippet: str, q: str) -> str:
     if not q:
         return snippet
-    # simple case-insensitive bold highlight
     pattern = re.compile(re.escape(q), re.IGNORECASE)
     return pattern.sub(lambda m: f"**{m.group(0)}**", snippet)
 
 if query:
-    # 4) Keyword search
     matched = []
     qlower = query.lower()
     for i, article in enumerate(articles, start=1):
