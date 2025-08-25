@@ -1507,6 +1507,72 @@ Switching from Outer Join to Inner Join in the workbook resolves the scheduled t
 
 ```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
+Expiry is lost when Grp Netting Active ?
+We see planned Transfer Future date and not expiry date
+Group Netting Expiry Issue
+
+I see in Control tables for PartSourceType we see the Expiry rule set with different values for similar Part Source types. For example…..
+
+ 
+
+ 
+
+These different types of Transfer PS have different Expiry Rule settings.
+
+One side effect of this setting I have noticed recently is related to Group Netting. Let’s say I have inventory of a part in both DE14 and DE17 which is likely to drop below the Minimum Shelf Life. Prior to GroupNetting I see the expiry risk on this inventory and supply is generated to replenish it.
+
+However, after running the first three steps of GroupNetting, now this inventory is sitting upstream in the network in site DENet. The Planned Transfers in to DE14 and DE17 supplied by the inventory in DENet have no expiry date calculated so nothing appears to expire. This generates lower net requirements at source and lower supplies in to DENet.
+
+ 
+
+ 
+
+ 
+
+When we reach the point where GroupNetting is removed ready to think about deploying supplies across the network, we now see negative inventory projections because the inventory has been replaced in DE14 and DE17 and we see the expiry risk again.
+
+ 
+
+Please find the attached documents for details .
+
+
+``````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Capacity Allocation with Priority – Summary
+
+Planned orders sometimes fail to respect sales order priorities in RapidResponse when using CommitLevel = High. High-priority demands may not always receive supply earlier than lower-priority demands because certain features conflict with priority processing.
+
+Key Conflicts (must be turned off for CommitLevel=High to work properly):
+
+DaysOfSupply → Forces CommitLevel to Low during Netting, ignoring priority.
+
+Expiry → Demands processed by due date to minimize expiry risk.
+
+OrderPriority.PeriodEffective=Y → High-priority demands in later periods may be delayed behind earlier low-priority demands.
+
+OrderPriority.AllocationRule=Fairshare → Supply distributed evenly, not by priority.
+
+How OrderPriority Works
+
+Netting: With CommitLevel=High, higher priority demands are processed first, creating PlannedOrders that inherit the demand’s priority.
+
+CTP Scheduling: Scheduling respects supply OrderPriority.
+
+CTP Allotment: Allocation per Part/Site may reassign supply to reduce lateness for lower-priority orders, provided high-priority orders are not delayed.
+
+What OrderPriority Does Not Do
+
+It does not force supplies of a given priority to only serve demands of the same priority.
+
+Local Allotment Example
+
+If a high-priority demand (day 10) and medium-priority demand (day 11) are netted, CTP may reshuffle supplies (FIFO) so that the day 10 demand takes day 9 supply, and day 11 demand takes day 10 supply. While both are on time, this creates a mismatch where high-priority demand uses medium-priority supply and vice versa.
+
+👉 In short, priority is respected in planning, but certain features and CTP adjustments can cause supply-priority mismatches.
+
+``````````````````````````````````````````````````````````````````````````````````````````
+
 
 
 
