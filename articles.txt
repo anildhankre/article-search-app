@@ -1759,9 +1759,7 @@ RapidResponse is generating additional planned orders than required for expiry c
 Cause:
 The ITE of the component part source is shorter than the ITE of the parent part, which caused the unexpected results.
 
- 
-
-There is an online KLC course with title 'Expiry Planning' that have a lot of useful information regarding expiry configuration and debugging. From Lesson 7 Observation of IntervalsToExpiry (ITE) in the network section: At a high level, the child level usually needs to have a longer (or equal) ITE than the parent level, to account for manufacturing lead times and safety lead times (SLT). How to calculate ITE is included in the below screenshot.
+At a high level, the child level usually needs to have a longer (or equal) ITE than the parent level, to account for manufacturing lead times and safety lead times (SLT). How to calculate ITE is included in the below screenshot.
 
 https://knowledge.kinaxis.com/s/article/Additional-Planned-orders-are-generated-than-required-for-expiry-parts
 
@@ -1969,7 +1967,337 @@ Netting’s “prepacking” of buckets means upstream decisions (PS1 assignment
 
 `````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
+BOM Analysis table is showing the following component twice with the only difference in the Earliest Demand Date & Last Demand Date. At the same time, another component 2500165 of the same assembly only has one record.
 
+Article Resolution
+This is occurring because if any part source is effective earlier than the primary part source, then it will be included in the Indented BOM report.
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Part Source Selection Logic – Summary
+
+Standard PartSource Selection
+
+When inventory and receipts are exhausted, Netting creates planned orders from active sources.
+
+Respects source allotment rules.
+
+If attribute-based planning is used, only sources meeting attribute qualifications are considered.
+
+If pooling logic is enabled, Netting chooses sources matching the demand pool (or with null pool).
+
+Multi-Level Search (MLS) PartSource Selection
+
+For parts with MLS enabled, decisions consider:
+
+Source effectivity, planning time fence, and constraints on the assembly part.
+
+Component constraints and availability.
+
+Goal: ensure sourcing provides orders on time while using available component supplies before generating new orders.
+
+Primary PartSource Selection
+
+Primary source is determined by sorting PartSource records using:
+
+Effective date validity within planning calendar.
+
+Priority (ascending/descending).
+
+Target value (descending).
+
+First effective date.
+
+Supplier ID.
+
+If no valid PartSource exists → PrimaryPartSource = NULL.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Auto-Creation of Records Despite Auto Parameter = No – Summary
+
+Issue: Records are still auto-created on a table even when the Auto parameter in Data Sources and Mapping is set to No.
+
+Reason:
+
+The table’s keys are references to other tables (no primary key of its own).
+
+The Auto setting only prevents auto-creation of the referenced key fields, not the table records.
+
+Example: For PartCustomer, it applies to Customer.Id, Part.Name, Part.Site references.
+
+Resolution:
+
+To fully stop record auto-creation, disable the Data Model option:
+Uncheck Allow automatic record creation.
+
+Path: Data Model → Right-click Table → Table Information → General tab.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Constraint Priority Not Respected – Summary
+
+Issue:
+
+RapidResponse is selecting a lower-priority constraint even though the primary constraint has available capacity.
+
+Even when only part X is active on the primary constraint, the system still uses the secondary constraint.
+
+Reason:
+
+If part X @ site Y is part of an MLS family and the ShortTermExcess = Reduce feature is enabled:
+
+A post-processing step adjusts CPO (Calculated Planned Order) due dates after MLS runs.
+
+CPOs can shift their due dates within the effective range of the PartSource.
+
+However, CPOs cannot switch to a different PartSource once created—even if the primary source has earlier capacity.
+
+Resolution:
+
+This is a limitation of the ReduceExcess feature.
+
+```````````````````````````````````````````````````````````````````````````
+
+Planned Order Generation Issue – Summary
+
+Problem:
+Planned Orders stop generating after a certain period (beyond 2 years from MRPDate), even though demands exist.
+
+Part has valid Part Source (effective dates ok, order policy = Default, BOM effective).
+
+Two source constraints linked; when the second constraint is removed, Planned Orders generate correctly.
+
+Findings & Suggestions:
+
+Constraint Availability
+
+Issue may occur if system cannot find enough ConstraintAvailable for both constraints in the same time bucket.
+
+Setting constraint type = LoadOnly or increasing constraint rates can allow planning.
+
+Netting vs CTP
+
+If Netting finds a usable PartSource but CTP fails, Planned Orders appear with “Future” availability date.
+
+In this case, no usable PartSource is found during Netting, so orders are not created.
+
+Calendars Check
+
+Ensure both the Part PlanningCalendar and Constraint Calendars have valid dates extending beyond 2 years.
+
+✅ Key Takeaway: Planned Orders may fail to generate due to constraint conflicts, lack of usable PartSource during Netting, or calendar horizon limits. Removing/adjusting constraints, changing to LoadOnly, or extending calendars can resolve the issue.
+
+PlannedOrder. future date
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Best Practices for Tackling Part & Part Source Chain Length
+
+Issue:
+High version chain lengths (Part = 23, Part Source = 59, Reference Part = 74) impacting system performance.
+Each edit creates a new record version; long chains force the database to scan many versions, slowing performance and wasting memory.
+
+Actions Already Taken:
+
+Reduced historical snapshots.
+
+Lowered scenario deletion threshold from 21 → 10 days.
+
+Expert Recommendations:
+
+Identify Data Churn Sources
+
+Long chains often come from frequent changes to fields (often for reporting, not analytics).
+
+Use tools/analysis to find which scenarios & fields cause the most churn.
+
+Process & Data Redesign
+
+Move frequently changing, non-analytical fields to a separate table and reference the Part table.
+
+Use Embedded Algorithms or caching to handle references efficiently.
+
+Scenario Management
+
+Continue pruning old/unused scenarios.
+
+Use scenario perspectives instead of editing large volumes of records to simulate changes.
+
+Engage Kinaxis Support
+
+Performance team can analyze and pinpoint root causes of excessive chain lengths.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Changing Effective Lead Time Calculation for Transfer Parts – Summary
+
+Issue:
+
+Contract manufacturers are modeled as separate sites in RR.
+
+Parts are supplied via transfer PartSources.
+
+Effective Lead Time (EffLeadTime) for transfer PartSources only includes Transit + Pre-Ship Lead Times.
+
+Fixed/variable manufacturing lead times are ignored at transfer type, since lead time starts from the build date.
+
+This results in underestimation (e.g., 11 days vs actual 47 days including manufacturing).
+
+Requirement:
+
+Keep PartSources as Transfer type.
+
+Add part-specific manufacturing lead times into the effective lead time calculation.
+
+Without changing source-level data (since multiple transfer parts share the same source).
+
+Discussion & Suggestions:
+
+Use Part.MultiSiteCumLeadTime
+
+Captures lead times for transfer parts + components.
+
+Useful for reporting, but doesn’t change planning behavior.
+
+Adjust Dock-to-Stock Lead Time
+
+Works at PartSource level, allowing differentiation across parts from the same source.
+
+Requires integration effort to populate.
+
+Use Planning Time Fence (PTF) Workaround
+
+Populate PlanningTimeFence = (Manufacturing + Transit + Pre-ship lead times).
+
+Set OrderPolicy.PTFRule = Fence.
+
+Prevents planned orders from being created earlier than this horizon, effectively simulating the longer lead time.
+
+Limitation: If supply already exists at the sending site, PTF still applies, which may delay unnecessarily.
+
+Conclusion:
+
+Native RR behavior does not allow including manufacturing lead time in transfer EffLeadTime.
+
+Best workarounds:
+
+Dock-to-Stock lead time at PartSource level (cleaner, but integration needed).
+
+Planning Time Fence approach (no input change, but less precise).
+
+True solution would require enhancement to RR logic.
+
+
+✅ Key Takeaway: RR does not natively support adding manufacturing lead time into transfer EffLeadTime. Use Dock-to-Stock (preferred, part-level control) or Planning Time Fence as workarounds, or request a product enhancement.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Include non-primary part sources in FlatBillDown and FlatBillUp calculations
+The calculated FlatBillDown and FlatBillUp tables report the results of explosions through BOM records. The FlatBillDown table reports all components used to make a given part, while the FlatBillUp table reports all assemblies where a given part is used.
+
+By default, the records generated in the FlatBillDown and FlatBillUp tables only contain results applicable to the primary part source for a given part. This means if an assembly has multiple part sources, the FlatBillDown table only reports details of components required to build the assembly when sourced from the primary part source. It does not, however, report details of component requirements when sourcing the part from other potential sources. For example, if a non-primary part source is associated with an alternate BOM, the results of exploding that alternate BOM would not be reported in the FlatBillDown table. Similarly, if an assembly has global part substitutes, the FlatBillDown table does not report details of those substitute parts or their components.
+
+If any non-primary part sources should be included when generating FlatBillDown and FlatBillUp records, the RR_Analytics_FlatBill_MultiSourceExplode algorithm parameter can be used. This parameter can be defined as a workbook boolean variable, and applied to any worksheets based on the FlatBillDown or FlatBillUp tables within that workbook. Valid options for this parameter/variable are:
+
+False: Only results from the primary part source for a given part are reported. This setting corresponds to the behavior seen when not using the parameter/variable. For example, for a given assembly, the FlatBillDown table would report only those components required when the assembly was sourced strictly from the primary part source.
+True: Results from all eligible part sources for a given part are reported. For example, for a given assembly, the FlatBillDown table would include records for components found from all eligible part sources (and not just the primary). Note also that if the assembly had global substitutes, then those substitutes along with all of their components would be reported (if just the substitutes should be included but their components excluded from FlatBillDown reports, then the RR_Analytics_FlatBill_AlternatePartExplode parameter can be used as discussed in Include global substitutes and their components in FlatBillDown calculations).
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Primary Part Source in RapidResponse – Summary
+
+Question:
+How does RR determine the PrimaryPartSource? After importing Part & PartSource data, RR sometimes selects a PrimaryPartSource based on unclear (and seemingly incorrect) criteria.
+
+Discussion:
+
+Issues often arise during data import when references (e.g., Source.Supplier.Id) are missing or invalid.
+
+If references cannot be resolved, some PartSource records are rejected during the update.
+
+This can lead to RR picking the "wrong" PartSource as primary because valid records are missing.
+
+Troubleshooting Steps:
+
+Check Data Update Log
+
+Errors & Warnings worksheet lists rejected PartSource records and missing references.
+
+Only the first x errors are shown per table (default = 200), so some errors may be hidden.
+
+Can adjust limits in Error Limits by Table worksheet under System Monitoring → Data Import & Update Log.
+
+Common Cause
+
+Missing or incorrect Source.Supplier.Id (or other reference fields like Source.ID, DestinationSite, etc.).
+
+Example error:
+
+Unable to resolve reference for "PartSource.Source" with values 
+"Source.ID='No_Source_ZZ', Source.Supplier.Id='05-100' ..."
+
+
+Once valid supplier/source data was provided in extracts, the issue was resolved.
+
+Conclusion:
+
+PrimaryPartSource determination depends on valid, effective PartSource records.
+
+If references are missing, RR may fall back to another PartSource (appearing “wrong”).
+
+Fix: ensure all PartSource imports have correct and consistent Supplier/Source references.
+
+✅ Key Takeaway: RR does not arbitrarily choose the PrimaryPartSource — it selects from the valid, effective PartSource records. Import errors (like missing Source.Supplier.Id) can cause RR to reject the intended primary source and default to another.
+
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+SourceRule Table – Summary
+
+Purpose:
+Defines how PartSource values are interpreted when multiple part sources can satisfy a demand (splits, priorities, effectivity rules).
+Referenced from Part.SourceRule.
+
+Key Fields:
+
+AllotmentRule – Determines how requirements are sourced when multiple PartSources have the same priority:
+
+Ongoing (default) → allocate to source furthest below target.
+
+OngoingToDate → allocate to source with lowest quota rating so far.
+
+Proportional → split requirement by target ratios.
+
+ProportionalLotSize → proportional but re-applied after each lot-sized allocation.
+
+DateEffectivityRule – Handles cases when demand date falls outside PartSource effective window:
+
+AdjustedDemandDate → demand left unsatisfied.
+
+Normal (default) → supply still planned, adjusted to within effectivity range.
+
+PriorityRule – Defines how priorities are interpreted:
+
+Ascending (default) → lower number = higher priority.
+
+Descending → higher number = higher priority.
+
+ControlSet – Linked control set.
+
+Description – Optional notes.
+
+Value – Identifier for the SourceRule.
+
+Parts – Parts referencing this SourceRule.
+
+✅ In essence: SourceRule controls how RapidResponse decides which PartSource(s) to use when multiple are valid — covering priority handling, percentage splits, effectivity, and allotment logic.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
 
 
