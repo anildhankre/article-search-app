@@ -2,7 +2,7 @@ import os
 import re
 import requests
 import streamlit as st
-from openai import OpenAI
+import openai
 
 # -------------------------------
 # Login Credentials
@@ -11,9 +11,15 @@ VALID_USERNAME = "SimbusRR"
 VALID_PASSWORD = "Simbus@2025"
 
 # -------------------------------
-# OpenAI Client (ChatGPT)
+# OpenAI Setup
 # -------------------------------
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+# -------------------------------
+# GitHub Auth (optional)
+# -------------------------------
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
+HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
 
 # -------------------------------
 # Repo Info
@@ -30,21 +36,19 @@ def load_articles():
     try:
         with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
             text = f.read()
-        # split by lines of -----, =====, or backticks
         articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-        # clean junk
         articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
-        return text, articles
+        return articles
     except Exception as e:
         st.warning(f"⚠️ Failed to load articles file: {e}")
-        return "", []
+        return []
 
 # -------------------------------
 # Fetch Best Practices Files
 # -------------------------------
 def fetch_bp_files():
     url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref={BP_BRANCH}"
-    r = requests.get(url)
+    r = requests.get(url, headers=HEADERS)
     if r.status_code == 200:
         data = r.json()
         pdfs = [{"name": f["name"], "url": f["download_url"]} for f in data if f["name"].endswith(".pdf")]
@@ -54,18 +58,27 @@ def fetch_bp_files():
         return []
 
 # -------------------------------
+# Normalize search terms
+# -------------------------------
+def normalize(text):
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+# -------------------------------
 # Search in Articles
 # -------------------------------
 def search_articles(articles, term):
     results = []
-    variations = generate_variations(term)
-
+    norm_term = normalize(term)
     for i, art in enumerate(articles, start=1):
-        art_lower = art.lower()
-        # also normalize article text by removing spaces
-        art_no_space = art_lower.replace(" ", "")
-        if any(v in art_lower or v in art_no_space for v in variations):
-            results.append((i, art.strip()))
+        norm_art = normalize(art)
+        if norm_term in norm_art:
+            highlighted = re.sub(
+                f"(?i)({re.escape(term)})",
+                r"**\1**",
+                art,
+                flags=re.IGNORECASE
+            )
+            results.append((i, highlighted.strip()))
     return results
 
 # -------------------------------
@@ -75,45 +88,19 @@ def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
 
 # -------------------------------
-# Generate Variations
-# -------------------------------
-def generate_variations(term):
-    variations = {term.lower()}
-    # Add spaced version (CamelCase → words)
-    spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', term).lower()
-    variations.add(spaced)
-    # Add condensed version (remove spaces)
-    condensed = term.replace(" ", "").lower()
-    variations.add(condensed)
-    return variations
-
-# -------------------------------
-# Highlight Matches
-# -------------------------------
-def highlight_text(text, term):
-    variations = generate_variations(term)
-    for v in variations:
-        if not v.strip():
-            continue
-        regex = re.compile(re.escape(v), re.IGNORECASE)
-        text = regex.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
-    return text
-
-# -------------------------------
-# Ask ChatGPT
+# Ask ChatGPT with context
 # -------------------------------
 def ask_chatgpt(context_text, query):
-    """Send query + articles.txt to ChatGPT and return answer."""
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",  # fast + cheap
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant. Use the provided context from articles.txt to answer user queries."},
                 {"role": "user", "content": f"Context:\n{context_text[:15000]}\n\nQuestion: {query}\n\nAnswer based only on the context above."}
             ],
             max_tokens=400,
         )
-        return response.choices[0].message.content
+        return response.choices[0].message["content"]
     except Exception as e:
         return f"⚠️ ChatGPT request failed: {e}"
 
@@ -134,14 +121,14 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("❌ Invalid username or password")
-    st.stop()  # stop rest of app until logged in
+    st.stop()
 
 # -------------------------------
 # Main App (only after login)
 # -------------------------------
-st.title("📄 Article & Best Practices Search + ChatGPT")
+st.title("📄 Article & Best Practices Search")
 
-context_text, articles = load_articles()
+articles = load_articles()
 bp_files = fetch_bp_files()
 
 query = st.text_input("🔍 Enter search term (or type `Show Index` to see all articles)")
@@ -160,8 +147,7 @@ elif query:
         st.markdown("### 📚 Articles")
         for idx, full_text in article_results:
             with st.expander(f"Article {idx} (click to expand)"):
-                highlighted = highlight_text(full_text, query)
-                st.markdown(highlighted, unsafe_allow_html=True)
+                st.markdown(full_text, unsafe_allow_html=True)
     else:
         st.info("No matching articles found.")
 
@@ -175,9 +161,11 @@ elif query:
         st.info("No matching Best Practice files found.")
 
     # --- ChatGPT Answer ---
-    st.markdown("### 🤖 ChatGPT Answer")
-    gpt_answer = ask_chatgpt(context_text, query)
-    st.write(gpt_answer)
+    if article_results:
+        st.markdown("### 🤖 ChatGPT Answer (from articles.txt)")
+        context_text = "\n\n".join(a for _, a in article_results)
+        answer = ask_chatgpt(context_text, query)
+        st.write(answer)
 
 else:
     st.write("👉 Type a search term above, or `Show Index` to see all articles.")
