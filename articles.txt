@@ -1671,6 +1671,42 @@ Do you want me to also create a before vs. after table (Now vs. CalStart) showin
 ````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
 
+Issue
+Users expect a Scheduled Receipt (SR) at the sourcing site to fulfill the demand at the destination site. However, sometimes RapidResponse instead fulfills it with a Planned Order (PO).
+
+Cause
+
+The SR at the source is late, so RapidResponse generates a PO to meet the demand earlier (or reduce lateness).
+
+Certain settings and configurations can make POs appear earlier/available than SRs.
+
+Resolution / Key Settings to Check
+To ensure SRs are prioritized correctly, review these factors:
+
+OrderPolicy.PTFrule = LastDueLeadAll → ensures PO DueDate is later than SR.
+
+SupplyStatus.IgnoreStartDate = Y → aligns lead times for PO & SR.
+
+SupplyStatus.LeadTimeOverride = No → ensures equal lead time handling.
+
+Lead time modifications → may cause POs to start earlier than SRs.
+
+PartType.CommitLevel = Medium → gives SRs higher priority than POs.
+
+PartType.AllocationQty = Ignore → prevents smaller POs from being favored over larger SRs.
+
+AvailableDateLimit = Now (vs. Due) → avoids SRs being considered later than POs.
+
+Allocation Table entries → can cause SR demand to explode to BOM components while PO demand doesn’t, delaying SR.
+
+PartSource.BOMAlternate → must be valid (not “NoBom”) to avoid SR lateness.
+
+MLS disabled → can also trigger earlier PO creation to reduce lateness.
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
+
 
 
 
