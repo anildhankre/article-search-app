@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import streamlit as st
+from openai import OpenAI
 
 # -------------------------------
 # Login Credentials
@@ -10,10 +11,9 @@ VALID_USERNAME = "SimbusRR"
 VALID_PASSWORD = "Simbus@2025"
 
 # -------------------------------
-# GitHub Auth (optional)
+# OpenAI Client (ChatGPT)
 # -------------------------------
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", None)
-HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -------------------------------
 # Repo Info
@@ -34,17 +34,17 @@ def load_articles():
         articles = re.split(r'`{5,}|={5,}|-{5,}', text)
         # clean junk
         articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
-        return articles
+        return text, articles
     except Exception as e:
         st.warning(f"⚠️ Failed to load articles file: {e}")
-        return []
+        return "", []
 
 # -------------------------------
 # Fetch Best Practices Files
 # -------------------------------
 def fetch_bp_files():
     url = f"https://api.github.com/repos/{BP_REPO}/contents/{BP_PATH}?ref={BP_BRANCH}"
-    r = requests.get(url, headers=HEADERS)
+    r = requests.get(url)
     if r.status_code == 200:
         data = r.json()
         pdfs = [{"name": f["name"], "url": f["download_url"]} for f in data if f["name"].endswith(".pdf")]
@@ -61,8 +61,10 @@ def search_articles(articles, term):
     variations = generate_variations(term)
 
     for i, art in enumerate(articles, start=1):
-        text_lower = art.lower()
-        if any(v in text_lower for v in variations):
+        art_lower = art.lower()
+        # also normalize article text by removing spaces
+        art_no_space = art_lower.replace(" ", "")
+        if any(v in art_lower or v in art_no_space for v in variations):
             results.append((i, art.strip()))
     return results
 
@@ -98,6 +100,24 @@ def highlight_text(text, term):
     return text
 
 # -------------------------------
+# Ask ChatGPT
+# -------------------------------
+def ask_chatgpt(context_text, query):
+    """Send query + articles.txt to ChatGPT and return answer."""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # fast + cheap
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant. Use the provided context from articles.txt to answer user queries."},
+                {"role": "user", "content": f"Context:\n{context_text[:15000]}\n\nQuestion: {query}\n\nAnswer based only on the context above."}
+            ],
+            max_tokens=400,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"⚠️ ChatGPT request failed: {e}"
+
+# -------------------------------
 # Login Page
 # -------------------------------
 if "logged_in" not in st.session_state:
@@ -119,9 +139,9 @@ if not st.session_state.logged_in:
 # -------------------------------
 # Main App (only after login)
 # -------------------------------
-st.title("📄 Article & Best Practices Search")
+st.title("📄 Article & Best Practices Search + ChatGPT")
 
-articles = load_articles()
+context_text, articles = load_articles()
 bp_files = fetch_bp_files()
 
 query = st.text_input("🔍 Enter search term (or type `Show Index` to see all articles)")
@@ -153,6 +173,11 @@ elif query:
             st.markdown(f"- [{r['name']}]({r['url']})")
     else:
         st.info("No matching Best Practice files found.")
+
+    # --- ChatGPT Answer ---
+    st.markdown("### 🤖 ChatGPT Answer")
+    gpt_answer = ask_chatgpt(context_text, query)
+    st.write(gpt_answer)
 
 else:
     st.write("👉 Type a search term above, or `Show Index` to see all articles.")
