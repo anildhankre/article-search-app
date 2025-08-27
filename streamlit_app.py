@@ -1,3 +1,5 @@
+st.write("✅ App loaded successfully")
+
 import re
 import math
 
