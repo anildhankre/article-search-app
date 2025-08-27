@@ -23,6 +23,7 @@ BP_REPO = "anildhankre/Kinaxis-BestPractices"
 BP_BRANCH = "main"
 BP_PATH = ""   # folder where PDFs live
 
+
 # -------------------------------
 # Load Articles
 # -------------------------------
@@ -32,12 +33,12 @@ def load_articles():
             text = f.read()
         # split by lines of -----, =====, or backticks
         articles = re.split(r'`{5,}|={5,}|-{5,}', text)
-        # clean junk
         articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
         return articles
     except Exception as e:
         st.warning(f"⚠️ Failed to load articles file: {e}")
         return []
+
 
 # -------------------------------
 # Fetch Best Practices Files
@@ -53,18 +54,83 @@ def fetch_bp_files():
         st.warning(f"⚠️ Failed to fetch files from GitHub (Status {r.status_code}) → {url}")
         return []
 
+
 # -------------------------------
-# Search in Articles
+# Highlight Matches
 # -------------------------------
-def search_articles(articles, term):
+def highlight_matches(text, query):
+    variations = generate_variations(query)
+    for var in sorted(variations, key=len, reverse=True):  # longest first
+        pattern = re.compile(re.escape(var), re.IGNORECASE)
+        text = pattern.sub(lambda m: f"**:orange-background[{m.group(0)}]**", text)
+    return text
+
+
+# -------------------------------
+# Generate Variations (for fuzzy search)
+# -------------------------------
+def generate_variations(term):
+    variations = set()
+    term = term.strip()
+    variations.add(term)
+
+    # no spaces
+    variations.add(term.replace(" ", ""))
+
+    # add spaces before uppercase letters
+    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", term)
+    variations.add(spaced)
+
+    return variations
+
+
+# -------------------------------
+# Normalize (remove spaces/punct for loose matching)
+# -------------------------------
+def normalize(s):
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+# -------------------------------
+# Search in Articles (with scoring)
+# -------------------------------
+def search_articles(articles, query):
     results = []
-    variations = generate_variations(term)
+    norm_query = normalize(query)
+    word_query = query.lower().split()
 
     for i, art in enumerate(articles, start=1):
-        text_lower = art.lower()
-        if any(v in text_lower for v in variations):
-            results.append((i, art.strip()))
+        score = 0
+        art_lower = art.lower()
+        art_norm = normalize(art)
+
+        # 1. Exact phrase match
+        if query.lower() in art_lower:
+            count = art_lower.count(query.lower())
+            score += 5 * count
+
+        # 2. Normalized (ignore spaces/punct) match
+        if norm_query in art_norm:
+            score += 4
+
+        # 3. All words appear in order
+        if all(w in art_lower for w in word_query):
+            joined = ".*?".join(map(re.escape, word_query))
+            if re.search(joined, art_lower):
+                score += 2
+
+        # 4. Frequency boost (each occurrence of words)
+        for w in word_query:
+            score += art_lower.count(w)
+
+        if score > 0:
+            highlighted = highlight_matches(art, query)
+            results.append((i, art.strip(), score, highlighted))
+
+    # sort by score descending
+    results.sort(key=lambda x: x[2], reverse=True)
     return results
+
 
 # -------------------------------
 # Search in Best Practices
@@ -72,30 +138,6 @@ def search_articles(articles, term):
 def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
 
-# -------------------------------
-# Generate Variations
-# -------------------------------
-def generate_variations(term):
-    variations = {term.lower()}
-    # Add spaced version (CamelCase → words)
-    spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', term).lower()
-    variations.add(spaced)
-    # Add condensed version (remove spaces)
-    condensed = term.replace(" ", "").lower()
-    variations.add(condensed)
-    return variations
-
-# -------------------------------
-# Highlight Matches
-# -------------------------------
-def highlight_text(text, term):
-    variations = generate_variations(term)
-    for v in variations:
-        if not v.strip():
-            continue
-        regex = re.compile(re.escape(v), re.IGNORECASE)
-        text = regex.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
-    return text
 
 # -------------------------------
 # Login Page
@@ -114,10 +156,11 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("❌ Invalid username or password")
-    st.stop()  # stop rest of app until logged in
+    st.stop()
+
 
 # -------------------------------
-# Main App (only after login)
+# Main App (after login)
 # -------------------------------
 st.title("📄 Article & Best Practices Search")
 
@@ -138,9 +181,8 @@ elif query:
     article_results = search_articles(articles, query)
     if article_results:
         st.markdown("### 📚 Articles")
-        for idx, full_text in article_results:
-            with st.expander(f"Article {idx} (click to expand)"):
-                highlighted = highlight_text(full_text, query)
+        for idx, full_text, score, highlighted in article_results:
+            with st.expander(f"Article {idx} (score: {score})"):
                 st.markdown(highlighted, unsafe_allow_html=True)
     else:
         st.info("No matching articles found.")
