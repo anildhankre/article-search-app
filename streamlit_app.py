@@ -65,13 +65,23 @@ def normalize_text(s):
 
 
 # -------------------------------
+# Split CamelCase (PascalCase)
+# -------------------------------
+def split_camel_case(word):
+    return re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)', word)
+
+
+# -------------------------------
 # Search in Articles with Scoring
 # -------------------------------
 def search_articles(articles, term):
     results = []
 
-    # break query into normalized terms
-    words = term.lower().split()
+    # split query into words and also break CamelCase
+    words = []
+    for w in term.split():
+        words.extend(split_camel_case(w))
+    words = list(set(words + [term]))  # keep original term too
     norm_words = [normalize_text(w) for w in words]
     norm_term = normalize_text(term)
 
@@ -81,38 +91,36 @@ def search_articles(articles, term):
 
         score = 0
 
-        # 1. Full exact match of whole query
+        # 1. Full exact match
         occurrences = lower_art.count(term.lower())
         if occurrences > 0:
             score += 5 * occurrences
 
-        # 2. Normalized contiguous match (handles PartSourceSelection)
+        # 2. Normalized contiguous match
         norm_occurrences = norm_art.count(norm_term)
         if norm_occurrences > 0:
             score += 4 * norm_occurrences
 
-        # 3. Individual word matches
+        # 3. Individual word matches (including CamelCase parts)
         for w, nw in zip(words, norm_words):
-            occ = lower_art.count(w)
+            occ = lower_art.count(w.lower())
             nocc = norm_art.count(nw)
             score += 2 * occ + nocc
 
-        # 4. Boost if ALL words found in article
-        if all(w in lower_art for w in words):
+        # 4. Boost if all words found
+        if all(w.lower() in lower_art for w in words):
             score += 10
 
-        # 5. Position boost (first 3 lines)
+        # 5. Boost if term in first 3 lines
         summary = art.split("\n", 3)[:3]
         if any(term.lower() in s.lower() for s in summary):
             score += 3
 
-        # Normalize by article length
         adj_score = score / log(len(art) + 2)
 
         if score > 0:
             results.append((i, art.strip(), adj_score))
 
-    # Sort by adjusted score
     results.sort(key=lambda x: x[2], reverse=True)
     return results
 
@@ -128,10 +136,14 @@ def search_bp(bp_files, term):
 # Underline Matches
 # -------------------------------
 def underline_matches(text, query):
-    terms = query.split()
-    for t in terms:
-        # underline only whole words
-        pattern = re.compile(rf"\b{re.escape(t)}\b", re.IGNORECASE)
+    # split into words & also handle CamelCase
+    words = []
+    for w in query.split():
+        words.extend(split_camel_case(w))
+    words = list(set(words + [query]))
+
+    for t in words:
+        pattern = re.compile(re.escape(t), re.IGNORECASE)
         text = pattern.sub(lambda m: f"<u>{m.group(0)}</u>", text)
     return text
 
