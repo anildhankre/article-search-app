@@ -2,6 +2,7 @@ import os
 import re
 import requests
 import streamlit as st
+from math import log
 
 # -------------------------------
 # Login Credentials
@@ -33,6 +34,7 @@ def load_articles():
             text = f.read()
         # split by lines of -----, =====, or backticks
         articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+        # clean junk
         articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
         return articles
     except Exception as e:
@@ -56,76 +58,53 @@ def fetch_bp_files():
 
 
 # -------------------------------
-# Highlight Matches
+# Normalize Text Helper
 # -------------------------------
-def highlight_matches(text, query):
-    variations = generate_variations(query)
-    for var in sorted(variations, key=len, reverse=True):  # longest first
-        pattern = re.compile(re.escape(var), re.IGNORECASE)
-        text = pattern.sub(lambda m: f"**:orange-background[{m.group(0)}]**", text)
-    return text
-
-
-# -------------------------------
-# Generate Variations (for fuzzy search)
-# -------------------------------
-def generate_variations(term):
-    variations = set()
-    term = term.strip()
-    variations.add(term)
-
-    # no spaces
-    variations.add(term.replace(" ", ""))
-
-    # add spaces before uppercase letters
-    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", term)
-    variations.add(spaced)
-
-    return variations
-
-
-# -------------------------------
-# Normalize (remove spaces/punct for loose matching)
-# -------------------------------
-def normalize(s):
+def normalize_text(s):
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
 # -------------------------------
-# Search in Articles (with scoring)
+# Search in Articles with Scoring
 # -------------------------------
-def search_articles(articles, query):
+def search_articles(articles, term):
     results = []
-    norm_query = normalize(query)
-    word_query = query.lower().split()
+    norm_term = normalize_text(term)
 
     for i, art in enumerate(articles, start=1):
+        lower_art = art.lower()
+        norm_art = normalize_text(art)
+
         score = 0
-        art_lower = art.lower()
-        art_norm = normalize(art)
+        occurrences = lower_art.count(term.lower())
 
-        # 1. Exact phrase match
-        if query.lower() in art_lower:
-            count = art_lower.count(query.lower())
-            score += 5 * count
+        # 1. Exact match
+        if term.lower() in lower_art:
+            score += 5 * occurrences
 
-        # 2. Normalized (ignore spaces/punct) match
-        if norm_query in art_norm:
-            score += 4
+        # 2. Normalized match
+        norm_occurrences = norm_art.count(norm_term)
+        if norm_occurrences > 0:
+            score += 4 * norm_occurrences
 
-        # 3. All words appear in order
-        if all(w in art_lower for w in word_query):
-            joined = ".*?".join(map(re.escape, word_query))
-            if re.search(joined, art_lower):
-                score += 2
+        # 3. Sequence/word order match
+        words = term.lower().split()
+        if len(words) > 1 and " ".join(words) in lower_art:
+            score += 3
 
-        # 4. Frequency boost (each occurrence of words)
-        for w in word_query:
-            score += art_lower.count(w)
+        # 4. Position boost (title/summary lines)
+        summary = art.split("\n", 3)[:3]  # first 3 lines
+        if any(term.lower() in s.lower() for s in summary):
+            score += 2
+
+        # 5. Raw frequency
+        score += occurrences
+
+        # 6. Length normalization
+        adj_score = score / log(len(art) + 2)
 
         if score > 0:
-            highlighted = highlight_matches(art, query)
-            results.append((i, art.strip(), score, highlighted))
+            results.append((i, art.strip(), adj_score))
 
     # sort by score descending
     results.sort(key=lambda x: x[2], reverse=True)
@@ -137,6 +116,14 @@ def search_articles(articles, query):
 # -------------------------------
 def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
+
+
+# -------------------------------
+# Highlight Matches
+# -------------------------------
+def highlight_matches(text, term):
+    pattern = re.compile(re.escape(term), re.IGNORECASE)
+    return pattern.sub(lambda m: f"**:orange[{m.group(0)}]**", text)
 
 
 # -------------------------------
@@ -156,11 +143,11 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("❌ Invalid username or password")
-    st.stop()
+    st.stop()  # stop rest of app until logged in
 
 
 # -------------------------------
-# Main App (after login)
+# Main App (only after login)
 # -------------------------------
 st.title("📄 Article & Best Practices Search")
 
@@ -181,9 +168,9 @@ elif query:
     article_results = search_articles(articles, query)
     if article_results:
         st.markdown("### 📚 Articles")
-        for idx, full_text, score, highlighted in article_results:
-            with st.expander(f"Article {idx} (score: {score})"):
-                st.markdown(highlighted, unsafe_allow_html=True)
+        for idx, full_text, _ in article_results:
+            with st.expander(f"Article {idx} (click to expand)"):
+                st.markdown(highlight_matches(full_text, query))
     else:
         st.info("No matching articles found.")
 
