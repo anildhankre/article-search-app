@@ -1,3 +1,5 @@
+import streamlit as st
+
 st.write("✅ App loaded successfully")
 
 import re
