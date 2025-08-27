@@ -67,45 +67,52 @@ def normalize_text(s):
 # -------------------------------
 # Search in Articles with Scoring
 # -------------------------------
-def search_articles(articles, query):
+def search_articles(articles, term):
     results = []
-    # Split query into terms (normalize them)
-    terms = [normalize_text(t) for t in query.split()]
-    joined_term = normalize_text(query)  # compact version like "partsource"
+
+    # break query into normalized terms
+    words = term.lower().split()
+    norm_words = [normalize_text(w) for w in words]
+    norm_term = normalize_text(term)
 
     for i, art in enumerate(articles, start=1):
         lower_art = art.lower()
         norm_art = normalize_text(art)
 
         score = 0
-        term_hits = 0
 
-        # --- Count individual term matches ---
-        for t in terms:
-            occ = norm_art.count(t)
-            if occ > 0:
-                score += 5 * occ   # weight per occurrence
-                term_hits += 1
+        # 1. Full exact match of whole query
+        occurrences = lower_art.count(term.lower())
+        if occurrences > 0:
+            score += 5 * occurrences
 
-        # --- Bonus: if ALL terms are present ---
-        if term_hits == len(terms) and len(terms) > 1:
-            score += 15  # big boost
+        # 2. Normalized contiguous match (handles PartSourceSelection)
+        norm_occurrences = norm_art.count(norm_term)
+        if norm_occurrences > 0:
+            score += 4 * norm_occurrences
 
-        # --- Bonus: compact match (e.g., "partsource") ---
-        if joined_term in norm_art and len(terms) > 1:
+        # 3. Individual word matches
+        for w, nw in zip(words, norm_words):
+            occ = lower_art.count(w)
+            nocc = norm_art.count(nw)
+            score += 2 * occ + nocc
+
+        # 4. Boost if ALL words found in article
+        if all(w in lower_art for w in words):
             score += 10
 
-        # --- Position boost: in summary/title ---
+        # 5. Position boost (first 3 lines)
         summary = art.split("\n", 3)[:3]
-        if any(query.lower() in s.lower() for s in summary):
-            score += 5
+        if any(term.lower() in s.lower() for s in summary):
+            score += 3
 
-        # --- Normalize by length ---
+        # Normalize by article length
+        adj_score = score / log(len(art) + 2)
+
         if score > 0:
-            adj_score = score / log(len(art) + 2)
             results.append((i, art.strip(), adj_score))
 
-    # Sort: highest score first
+    # Sort by adjusted score
     results.sort(key=lambda x: x[2], reverse=True)
     return results
 
@@ -118,13 +125,14 @@ def search_bp(bp_files, term):
 
 
 # -------------------------------
-# Highlight Matches (multi-term)
+# Underline Matches
 # -------------------------------
-def highlight_matches(text, query):
+def underline_matches(text, query):
     terms = query.split()
     for t in terms:
-        pattern = re.compile(re.escape(t), re.IGNORECASE)
-        text = pattern.sub(lambda m: f"**:orange[{m.group(0)}]**", text)
+        # underline only whole words
+        pattern = re.compile(rf"\b{re.escape(t)}\b", re.IGNORECASE)
+        text = pattern.sub(lambda m: f"<u>{m.group(0)}</u>", text)
     return text
 
 
@@ -172,7 +180,7 @@ elif query:
         st.markdown("### 📚 Articles")
         for idx, full_text, _ in article_results:
             with st.expander(f"Article {idx} (click to expand)"):
-                st.markdown(highlight_matches(full_text, query))
+                st.markdown(underline_matches(full_text, query), unsafe_allow_html=True)
     else:
         st.info("No matching articles found.")
 
