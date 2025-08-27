@@ -1703,7 +1703,28 @@ PartSource.BOMAlternate → must be valid (not “NoBom”) to avoid SR lateness
 
 MLS disabled → can also trigger earlier PO creation to reduce lateness.
 `````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+Issue
+After upgrading from H2402.5 → H2412, Maestro no longer consumes OnHand (OH) and Scheduled Receipts (SR) from the same SubstituteGroup before creating PlannedPOs on the primary part.
 
+In H2402.5 → no excess PlannedPOs.
+
+In H2412 → ~160k PlannedPOs created unexpectedly, inflating buys and inventory positions.
+
+Cause
+
+The change is due to the new MLS Acceleration Feature (introduced in H2411+).
+
+This feature improves runtime by sorting and evaluating supply sources based on historical performance, skipping weaker ones.
+
+However, in this case it caused the MLS trial limit (750,000) to be hit early, leading to unexpected PlannedPO creation and undesired results.
+
+Resolution / Workaround
+
+Disable MLS Acceleration feature (requires Kinaxis Support if ≥ H2411).
+
+Increase MLS Trial Limit in the MLS Configuration workbook to allow full evaluation.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
 
 
