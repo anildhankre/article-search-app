@@ -59,11 +59,15 @@ def fetch_bp_files():
 def search_articles(articles, term):
     results = []
 
-    # prepare variations: original + spaced version
     variations = {term.lower()}
-    # insert spaces before capital letters (e.g., SupplyStatus -> supply status)
+
+    # 1. Add spaced version (SupplyStatus → supply status)
     spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', term).lower()
     variations.add(spaced)
+
+    # 2. Add condensed version (supply status → supplystatus)
+    condensed = term.replace(" ", "").lower()
+    variations.add(condensed)
 
     for i, art in enumerate(articles, start=1):
         art_lower = art.lower()
