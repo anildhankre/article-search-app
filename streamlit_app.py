@@ -67,46 +67,45 @@ def normalize_text(s):
 # -------------------------------
 # Search in Articles with Scoring
 # -------------------------------
-def search_articles(articles, term):
+def search_articles(articles, query):
     results = []
-    norm_term = normalize_text(term)
+    # Split query into terms (normalize them)
+    terms = [normalize_text(t) for t in query.split()]
+    joined_term = normalize_text(query)  # compact version like "partsource"
 
     for i, art in enumerate(articles, start=1):
         lower_art = art.lower()
         norm_art = normalize_text(art)
 
         score = 0
-        occurrences = lower_art.count(term.lower())
+        term_hits = 0
 
-        # 1. Exact match
-        if term.lower() in lower_art:
-            score += 5 * occurrences
+        # --- Count individual term matches ---
+        for t in terms:
+            occ = norm_art.count(t)
+            if occ > 0:
+                score += 5 * occ   # weight per occurrence
+                term_hits += 1
 
-        # 2. Normalized match
-        norm_occurrences = norm_art.count(norm_term)
-        if norm_occurrences > 0:
-            score += 4 * norm_occurrences
+        # --- Bonus: if ALL terms are present ---
+        if term_hits == len(terms) and len(terms) > 1:
+            score += 15  # big boost
 
-        # 3. Sequence/word order match
-        words = term.lower().split()
-        if len(words) > 1 and " ".join(words) in lower_art:
-            score += 3
+        # --- Bonus: compact match (e.g., "partsource") ---
+        if joined_term in norm_art and len(terms) > 1:
+            score += 10
 
-        # 4. Position boost (title/summary lines)
-        summary = art.split("\n", 3)[:3]  # first 3 lines
-        if any(term.lower() in s.lower() for s in summary):
-            score += 2
+        # --- Position boost: in summary/title ---
+        summary = art.split("\n", 3)[:3]
+        if any(query.lower() in s.lower() for s in summary):
+            score += 5
 
-        # 5. Raw frequency
-        score += occurrences
-
-        # 6. Length normalization
-        adj_score = score / log(len(art) + 2)
-
+        # --- Normalize by length ---
         if score > 0:
+            adj_score = score / log(len(art) + 2)
             results.append((i, art.strip(), adj_score))
 
-    # sort by score descending
+    # Sort: highest score first
     results.sort(key=lambda x: x[2], reverse=True)
     return results
 
@@ -119,11 +118,14 @@ def search_bp(bp_files, term):
 
 
 # -------------------------------
-# Highlight Matches
+# Highlight Matches (multi-term)
 # -------------------------------
-def highlight_matches(text, term):
-    pattern = re.compile(re.escape(term), re.IGNORECASE)
-    return pattern.sub(lambda m: f"**:orange[{m.group(0)}]**", text)
+def highlight_matches(text, query):
+    terms = query.split()
+    for t in terms:
+        pattern = re.compile(re.escape(t), re.IGNORECASE)
+        text = pattern.sub(lambda m: f"**:orange[{m.group(0)}]**", text)
+    return text
 
 
 # -------------------------------
