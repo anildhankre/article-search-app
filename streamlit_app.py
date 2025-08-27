@@ -2,18 +2,12 @@ import os
 import re
 import requests
 import streamlit as st
-import openai
 
 # -------------------------------
 # Login Credentials
 # -------------------------------
 VALID_USERNAME = "SimbusRR"
 VALID_PASSWORD = "Simbus@2025"
-
-# -------------------------------
-# OpenAI Setup
-# -------------------------------
-openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # -------------------------------
 # GitHub Auth (optional)
@@ -36,7 +30,9 @@ def load_articles():
     try:
         with open(ARTICLE_FILE, "r", encoding="utf-8") as f:
             text = f.read()
+        # split by lines of -----, =====, or backticks
         articles = re.split(r'`{5,}|={5,}|-{5,}', text)
+        # clean junk
         articles = [a.strip() for a in articles if a.strip() and not set(a.strip()) <= {"`", "-", "="}]
         return articles
     except Exception as e:
@@ -58,27 +54,16 @@ def fetch_bp_files():
         return []
 
 # -------------------------------
-# Normalize search terms
-# -------------------------------
-def normalize(text):
-    return re.sub(r"[^a-z0-9]", "", text.lower())
-
-# -------------------------------
 # Search in Articles
 # -------------------------------
 def search_articles(articles, term):
     results = []
-    norm_term = normalize(term)
+    variations = generate_variations(term)
+
     for i, art in enumerate(articles, start=1):
-        norm_art = normalize(art)
-        if norm_term in norm_art:
-            highlighted = re.sub(
-                f"(?i)({re.escape(term)})",
-                r"**\1**",
-                art,
-                flags=re.IGNORECASE
-            )
-            results.append((i, highlighted.strip()))
+        text_lower = art.lower()
+        if any(v in text_lower for v in variations):
+            results.append((i, art.strip()))
     return results
 
 # -------------------------------
@@ -88,21 +73,29 @@ def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
 
 # -------------------------------
-# Ask ChatGPT with context
+# Generate Variations
 # -------------------------------
-def ask_chatgpt(context_text, query):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant. Use the provided context from articles.txt to answer user queries."},
-                {"role": "user", "content": f"Context:\n{context_text[:15000]}\n\nQuestion: {query}\n\nAnswer based only on the context above."}
-            ],
-            max_tokens=400,
-        )
-        return response.choices[0].message["content"]
-    except Exception as e:
-        return f"⚠️ ChatGPT request failed: {e}"
+def generate_variations(term):
+    variations = {term.lower()}
+    # Add spaced version (CamelCase → words)
+    spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', term).lower()
+    variations.add(spaced)
+    # Add condensed version (remove spaces)
+    condensed = term.replace(" ", "").lower()
+    variations.add(condensed)
+    return variations
+
+# -------------------------------
+# Highlight Matches
+# -------------------------------
+def highlight_text(text, term):
+    variations = generate_variations(term)
+    for v in variations:
+        if not v.strip():
+            continue
+        regex = re.compile(re.escape(v), re.IGNORECASE)
+        text = regex.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
+    return text
 
 # -------------------------------
 # Login Page
@@ -121,7 +114,7 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("❌ Invalid username or password")
-    st.stop()
+    st.stop()  # stop rest of app until logged in
 
 # -------------------------------
 # Main App (only after login)
@@ -147,7 +140,8 @@ elif query:
         st.markdown("### 📚 Articles")
         for idx, full_text in article_results:
             with st.expander(f"Article {idx} (click to expand)"):
-                st.markdown(full_text, unsafe_allow_html=True)
+                highlighted = highlight_text(full_text, query)
+                st.markdown(highlighted, unsafe_allow_html=True)
     else:
         st.info("No matching articles found.")
 
@@ -159,13 +153,6 @@ elif query:
             st.markdown(f"- [{r['name']}]({r['url']})")
     else:
         st.info("No matching Best Practice files found.")
-
-    # --- ChatGPT Answer ---
-    if article_results:
-        st.markdown("### 🤖 ChatGPT Answer (from articles.txt)")
-        context_text = "\n\n".join(a for _, a in article_results)
-        answer = ask_chatgpt(context_text, query)
-        st.write(answer)
 
 else:
     st.write("👉 Type a search term above, or `Show Index` to see all articles.")
