@@ -1726,6 +1726,251 @@ Increase MLS Trial Limit in the MLS Configuration workbook to allow full evaluat
 
 `````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
+Article Summary
+Planned Transfer Allocation is generated when there is no Supply, this should not be happening.
+
+Article Resolution
+The observed behaviour is expected given the configuration.
+
+Key Maestro functionality which explains the behaviour:
+
+During the initialization of an MLS (Multi-Level Search) family, MLS sorts non-reschedulable scheduled receipts in priority order and then locks down their component and constraint usage. The highest priority scheduled receipts are processed first.
+When a dependent demand is processed by MLS, this dependent demand is compared with all existing demands at the same level in the family. If the existing demand is preferred based on selection criteria like priority and date, that demand is processed before the new dependent demand. For parts using both expiry and safety stock, as in the customer example, priority comparisons are based on the part's default priority rather than the demand priority.
+Reported Version
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+How can Transit LeadTime be controlled when OnHand with the same Part Name are in different locations? If the Raw Part OnHand is located in Japan/US and the WIP FG Part is produced in Japan, the Transit Time will be very different and will greatly affect the DueDate of the Planned Orders.
+
+Article Resolution
+When parts with the same part name exist in different locations, different part site combinations need to be created in RapidReponse and they are essentially different parts.
+
+ 
+
+If you have part A at site US and you also have Part A at site Japan, 2 parts need to be created in RapidResponse. When you have OH in two different sites, they should be populated into the OnHand table under different sites. If stock is produced in Japan and can be transferred to the US, then a Make part source for Part A at site Japan and a transfer part source at site US (transfer from site Japan) should be created. Both part sources should have Lead time defined (mostly transit time for transfer part source). Once defined, if a planned order (PO) is generated at site US using this transfer part source, then the transit lead time will be taken into account when calculating the DueDate and available date of the PO.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+Article Summary
+RapidResponse is generating additional planned orders than required for expiry component parts. When the Internal to Expiry value is changed to a larger value, then no excess planned orders are generated.
+
+ 
+
+Cause:
+The ITE of the component part source is shorter than the ITE of the parent part, which caused the unexpected results.
+
+ 
+
+There is an online KLC course with title 'Expiry Planning' that have a lot of useful information regarding expiry configuration and debugging. From Lesson 7 Observation of IntervalsToExpiry (ITE) in the network section: At a high level, the child level usually needs to have a longer (or equal) ITE than the parent level, to account for manufacturing lead times and safety lead times (SLT). How to calculate ITE is included in the below screenshot.
+
+https://knowledge.kinaxis.com/s/article/Additional-Planned-orders-are-generated-than-required-for-expiry-parts
+
+for parent having single compoenent either through Make or Transfer
+Parent Part ITE = ChildPart ITE - ChildPart's Safety Lead Time - ParentPartSource Leadtime    
+
+for Parent having multiple components either through Make/transfer
+
+Parent Part ITE = Min(Child Parts ITE) - Min(Child Parts Safety Leadtime) - ParentPartSource Leadtime
+
+[To avoid excess planned orders for expiry-controlled parts, make sure the Intervals To Expiry (ITE) of child components is longer than (or at least equal to) the ITE of the parent part]
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Detailed Guide: Planning Bi-Directional Transfers in RapidResponse
+1. The Problem: Recursive Transfers
+
+In supply chain, sometimes parts move back and forth between two or more sites.
+
+Example: Site A → Site B for subassembly, then Site B → Site A for final assembly.
+
+Business expectation: RapidResponse should plan these flows naturally.
+
+Reality: Maestro flags this as Recursive PartSource, which planning algorithms cannot resolve (loops break netting and pegging logic).
+
+This creates a gap: business needs ↔ Maestro limitations.
+
+2. Workarounds to Model Bi-Directional Transfers
+Method 1: Scheduled Receipt (SR) + Independent Demand (ID) Pair
+
+When to use: Rare or occasional reverse transfers.
+
+How it works:
+
+You don’t actually create a recursive transfer PartSource.
+
+Instead, you manually model the transfer as a demand and supply pair.
+
+Example (Site B → Site A):
+
+Put an Independent Demand (ID) at Site B on the ship-out date.
+
+Represents the transfer leaving Site B.
+
+Put a Scheduled Receipt (SR) at Site A on the receive date.
+
+Represents the arrival at Site A.
+
+Why it works:
+
+Maestro sees it as a one-way transfer (ID and SR), not a recursive loop.
+
+Demand pegging works properly.
+
+Pros:
+
+Simple and lightweight for infrequent transfers.
+
+Easy to maintain if only a few cases.
+
+Cons:
+
+Not scalable. Becomes messy with many transfers.
+
+Requires manual maintenance of ID/SR records.
+
+Method 2: Virtual Site Approach
+
+When to use: Frequent, regular, or multi-directional transfers across many sites.
+
+Concept: Create a centralized virtual site (X) to manage shared inventory.
+
+Instead of directly transferring between A ↔ B, you transfer through X.
+
+X acts like a logical pooling site for excess inventory.
+
+How it works:
+
+Create Virtual Site X.
+
+Run a process that calculates excess inventory at Sites A, B, C.
+
+Move that excess into OnHand at Site X.
+
+Tag the record with Location = original site (so you know where the stock physically is).
+
+Example:
+
+Part	Site	Location	Qty
+P1	X	Site A	50
+P1	X	Site B	75
+
+When Site C has demand:
+
+Maestro allocates demand to inventory in Site X.
+
+Pegging report shows that the 10 units came from Site B’s bucket in Site X.
+
+Then, an SR + ID pair is created for the actual physical transfer from Site B → Site C.
+
+A scheduled batch process refreshes Site X inventory regularly.
+
+Why it works:
+
+Breaks the recursive loop because Maestro sees all supply flowing through X, not directly between sites.
+
+Keeps planning consistent while still honoring real site ownership.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Planned Orders are not generated in the Planning Sheet workbook despite having demand.
+ 
+
+Cause
+Part is not valid after the Effective Out Date. The Part Source Effective Out Date is earlier than the Planning Time Fence (PTF) therefore no planned orders are generated.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Primary part-source still chosen at phase-out — planned orders pushed to “Future” because Netting consumed constraint at DueDate but CTP moved work later when components were late
+
+Below I’ll explain exactly what happens, why it produces planned orders with AvailableDate = Future, and how to fix or mitigate it — with a concrete, step-by-step numeric example so the mechanism is obvious.
+
+1) Short summary (one sentence)
+
+Netting assigns planned orders to the primary part source and consumes that part-source’s constraint using the PO DueDate, but because BOM components arrive late the material start moves later during CTP — which causes those POs to actually consume constraint in later buckets (after the primary source phased out), leaving the POs tied to a source that is no longer available → POs end up with AvailableDate = Future.
+
+2) Key concepts you must keep in mind
+
+Netting creates planned orders and consumes constraint buckets based on the PO DueDate (preplanning step).
+
+CTP (capacity / material reconciliation) runs afterwards and verifies material & capacity — if components are late it can move the actual start of a planned order to later buckets (MaterialStartDay).
+
+EffectiveOut on a PartSource defines until when that source can be used. If the order’s real start moves past that EffectiveOut, the part source can no longer supply it.
+
+If Netting already consumed constrained capacity for the primary source, and CTP later moves that work into buckets where the primary source is invalid/over-subscribed, you get a “domino” of reassignments and Future available dates.
+
+3) Concrete numeric example (walkthrough)
+
+Setup / dates
+
+Part = P
+
+Two PartSources:
+
+PS1 (primary) — Effective: Aug 1, 2025 → Oct 31, 2025 (phases out end of October).
+
+PS2 (secondary) — Effective: long term (through 2028).
+
+Constraints:
+
+Constraint1 (for PS1): capacity 200 units in September, 200 units in October (total 400 across the 2 months).
+
+Constraint2 (for PS2): large capacity ongoing.
+
+Demand (forecast) for P:
+
+Sep demand = 200 units
+
+Oct demand = 200 units
+
+Nov demand = 200 units
+
+BOM components (component Q) are late: their scheduled receipts make them actually available in mid-November for production that Netting assumed could run in October.
+
+Netting run (early Sep)
+
+Netting sees demand and available PS1 capacity for Sep/Oct and creates PlannedOrders:
+
+PO_A (200 units) — DueDate Sep 20, assigned to PS1 (consumes Sep constraint 200/200).
+
+PO_B (200 units) — DueDate Oct 20, assigned to PS1 (consumes Oct constraint 200/200).
+
+At Netting time, both POs look OK because PS1 has capacity in Sep/Oct.
+
+Later — when CTP runs and material lateness is discovered
+
+The BOM component Q that PO_B needs is actually arriving late (component SR expected Nov 10). That means PO_B cannot start/finish in October — its material start shifts into November (MaterialStartDay = Nov 10).
+
+During CTP, PO_B must now occupy November capacity, not October.
+
+Constraint conflict and phase-out effect
+
+But PS1 is only valid through Oct 31. So PO_B cannot legitimately be produced by PS1 in November.
+
+Netting had already “spent” PS1 capacity for October — CTP now tries to steal November capacity for PO_B but PS1 is not available in November → the system cannot find PS1 capacity for the new (moved) start. The order is now effectively unfulfillable by PS1 at its needed time.
+
+If the engine does not automatically reassign that PO to PS2 during CTP (or cannot because of bucket packing and preplanning logic), the PO shows up with AvailableDate = Future (no valid immediate supply from PS1); business ends up with POs that appear to be sourced from PS1 but are actually unservable until a future date or until re-sourced.
+
+End result
+
+POs that Netting preassigned to PS1 appear in the system but are effectively blocked (Future) because material lateness moved their start past PS1’s EffectiveOut and/or into already-used constraint buckets. This produces late/unusable planned buys and a “domino” of moved capacity.
+
+4) Root cause (compact)
+
+Timing mismatch between Netting (which consumes constraint at PO DueDate) and CTP (which may reassign start dates based on material availability).
+
+Material lateness (MaterialStartDay > PlannedOrder.DueDate) causes the PO to consume later constraint buckets than Netting expected.
+
+Primary part source phases out at the end of a bucket window, so the later bucket may have no PS1 capacity / PS1 not effective → planned order becomes Future instead of being produced by PS2.
+
+Netting’s “prepacking” of buckets means upstream decisions (PS1 assignment) were made without the final material availability picture.
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
 
 
 
