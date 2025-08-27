@@ -58,20 +58,11 @@ def fetch_bp_files():
 # -------------------------------
 def search_articles(articles, term):
     results = []
-
-    variations = {term.lower()}
-
-    # 1. Add spaced version (SupplyStatus → supply status)
-    spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', term).lower()
-    variations.add(spaced)
-
-    # 2. Add condensed version (supply status → supplystatus)
-    condensed = term.replace(" ", "").lower()
-    variations.add(condensed)
+    variations = generate_variations(term)
 
     for i, art in enumerate(articles, start=1):
-        art_lower = art.lower()
-        if any(v in art_lower for v in variations):
+        text_lower = art.lower()
+        if any(v in text_lower for v in variations):
             results.append((i, art.strip()))
     return results
 
@@ -80,6 +71,31 @@ def search_articles(articles, term):
 # -------------------------------
 def search_bp(bp_files, term):
     return [f for f in bp_files if term.lower() in f["name"].lower()]
+
+# -------------------------------
+# Generate Variations
+# -------------------------------
+def generate_variations(term):
+    variations = {term.lower()}
+    # Add spaced version (CamelCase → words)
+    spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', term).lower()
+    variations.add(spaced)
+    # Add condensed version (remove spaces)
+    condensed = term.replace(" ", "").lower()
+    variations.add(condensed)
+    return variations
+
+# -------------------------------
+# Highlight Matches
+# -------------------------------
+def highlight_text(text, term):
+    variations = generate_variations(term)
+    for v in variations:
+        if not v.strip():
+            continue
+        regex = re.compile(re.escape(v), re.IGNORECASE)
+        text = regex.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
+    return text
 
 # -------------------------------
 # Login Page
@@ -124,7 +140,8 @@ elif query:
         st.markdown("### 📚 Articles")
         for idx, full_text in article_results:
             with st.expander(f"Article {idx} (click to expand)"):
-                st.markdown(full_text)
+                highlighted = highlight_text(full_text, query)
+                st.markdown(highlighted, unsafe_allow_html=True)
     else:
         st.info("No matching articles found.")
 
