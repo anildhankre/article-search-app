@@ -1573,6 +1573,103 @@ If a high-priority demand (day 10) and medium-priority demand (day 11) are nette
 
 ``````````````````````````````````````````````````````````````````````````````````````````
 
+Issue
+RapidResponse allocates inventory from non-primary sources and allows lateness at downstream DCs even when stock exists at the primary source above safety stock.
+
+Causes
+
+Demand Sorting Sequence
+
+Non-reschedulable SRs (LLC0) create new allocations on LLC1.
+
+Independent demands/forecasts on LLC1 get processed first, consuming primary source SRs.
+
+When PTAs arrive later, only non-primary sources remain available, so RR allocates from them to reduce lateness.
+
+IntervalDate Sorting
+
+With co-by products in a family, IntervalDate (PTFDate) is prioritized over demand due date.
+
+PTAs inherit PTFDate, causing them to be sorted/processed later than IndependentDemands and forecasts.
+
+Resolution / Workaround
+Use RecommendOnly SRs to avoid premature allocation and allow better alignment of sourcing from primary locations.
+
+
+`````````````````````````````````````````````````````````````````````````````````````
+
+Issue
+At site A, a part has a transfer PartSource from site B. However, site B’s part has no PartSources (not planning). Despite this break in the network, the Planned Order at site A still shows a non-Future AvailableDate, instead of “Future” as expected.
+
+Explanation
+This is expected behavior in RapidResponse due to core algorithm design choices:
+
+Parts without a valid PartSource are ignored → treated as if ProcessingRule = Ignore.
+
+Make/Transfer PartSource with no dependent demand is treated as Buy → assumed to represent external procurement when dependency cannot be generated.
+
+Thus, site A still calculates a valid AvailableDate instead of “Future.”
+
+Resolution
+
+Ensure configuration is correct: if a component should prevent supply, give it a PartSource with OrderPolicy.OrderGenerationRule = NoOrders.
+
+Valid PartSources must meet one of:
+
+Type.EffectivityRule = Always, or
+
+Type.EffectivityRule != Never with EffectiveInDate < EffectiveOutDate.
+
+Documentation has been updated:
+
+Invalid PartSources → treated as Ignore.
+
+Parent Make/Transfer → treated as Buy if child part is invalid.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Issue
+In a BOM:
+
+Assembly A → Phantom component B → Normal components C & D
+When a planned order exists for Assembly A, RapidResponse does not generate dependent demands on C & D.
+
+Cause
+
+Phantom part B has no PartSource.
+
+In RapidResponse, any part without a valid PartSource is ignored in netting (treated like ProcessingRule = Ignore).
+
+Therefore, dependent demand on B is not processed and cannot be exploded to C & D.
+
+Resolution
+
+Create Make PartSources for Phantom parts.
+
+This allows dependent demand to “blow through” correctly from the phantom to its components C & D during explosion.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Issue
+PlannedTransfers to sites 1464, 1471, and 1878 (due Oct/Nov 2025) show their source SR Due Date at US_National in 2024, which looks inconsistent.
+
+Cause
+
+In Netting, Maestro uses the SR DueDate (2024) for planning.
+
+However, the SupplyStatus.AvailableDateLimit for these SRs at US_National is set to Now, making their AvailableDate much earlier than the DueDate.
+
+During CTP, supply allocation uses AvailableDate, creating a mismatch between Netting and CTP results.
+
+Resolution
+
+Change SupplyStatus.AvailableDateLimit from Now to CalStart so AvailableDate aligns better with DueDate and avoids discrepancies in CTP allotment.
+
+Do you want me to also create a before vs. after table (Now vs. CalStart) showing how DueDate and AvailableDate differ?
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
 
 
 
