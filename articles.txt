@@ -2300,6 +2300,117 @@ Parts – Parts referencing this SourceRule.
 `````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
 
 
+Safety Stock: DemandTransformation:
+
+The DemandTransformationRule setting controls how priorities flow through supply planning when safety stock is involved. It basically answers:
+👉 When a supply is created because of safety stock, should it "inherit" the priority of a future real demand it will eventually serve, or should it keep the lower/default priority of safety stock?
+
+
+1. FirstInFirstOut
+
+Logic: Supply created for safety stock inherits the priority of the actual demand it will end up serving (based on due date order).
+
+Effect:
+
+If a safety stock triggers planned supply today, and tomorrow a high-priority sales order arrives, the earlier supply is treated as if it was created for that sales order.
+
+Supplies can split to match multiple demands of different priorities.
+
+Prevents situations where high-priority orders get delayed just because the system thought supply was "for safety stock only."
+
+When useful: If you want your supply chain to always reflect real demand priorities as soon as they appear, even if supply was pre-built for safety stock.
+
+Example:
+
+Safety stock requires 100 units. System creates supply for 100 (low priority).
+
+Next day, a high-priority sales order of 50 comes in.
+
+With FirstInFirstOut, the supply for 100 "transforms" — 50 gets assigned to the high-priority sales order, and the rest may stay low-priority.
+➡️ The high-priority demand is satisfied on time.
+
+2. Ignore
+
+Logic: Supply created for safety stock keeps its default priority (usually low).
+
+Effect:
+
+Real demands that later consume this supply may be of higher priority, but that priority doesn’t propagate back.
+
+This can cause issues where a lower-priority safety stock supply is used for a high-priority order, and the system doesn’t fully adjust priorities downstream.
+
+When useful: If you want to keep things simple and treat safety stock as its own demand, separate from customer demand.
+
+Example:
+
+Safety stock requires 100 units → supply for 100 (low priority).
+
+Next day, a high-priority sales order of 50 comes in.
+
+With Ignore, the system still treats that supply as low priority.
+➡️ The high-priority demand might get delayed if there are conflicts.
+
+3. Default Behavior
+
+Default = Ignore.
+
+If CommitLevel = Medium or Low, system always uses default priority (ignores transformation), no matter what.
+
+✅ In short:
+
+FirstInFirstOut → safety stock supply "adapts" to real demand priorities (more flexible, prevents high-priority lateness).
+
+Ignore → safety stock supply stays low priority (simpler, but risks late fulfillment for high-priority orders).
+
+
+
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Why would Maestro create 2 records for dynamic safety stock calculation?
+
+Article Resolution
+From the Data model guide:
+
+ 
+
+For parts using range of coverage calculations, an additional safety stock demand with quantity given by Part.SafetyStockQty is generated on the date indicated by Part.SafetyStockPolicy.SafetyStockDateRule. To avoid having this additional demand generated, ensure the value of Part.SafetyStockQty is set to 0.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+Problem: Why does RapidResponse generate excess stock when using time-phased safety stock?
+
+Root cause:
+
+The part has high demand before the Planning Date Fence (PDFDate).
+
+After the PDFDate, demand drops sharply (e.g., product is phasing out).
+
+RapidResponse tries to protect against those early high demands by creating large planned orders.
+
+But because of the Planning Time Fence (PTF), those orders can only be placed on the PDFDate (not earlier).
+
+This creates a big lump of supply on the PDFDate.
+
+After the PDFDate, safety stock decreases (because demand drops), but since demand falls even faster, the extra stock never gets consumed.
+
+Result = excess stock remains in the system.
+
+Resolution / Fix
+
+Recheck Safety Stock settings for parts with phasing-out demand.
+
+Example: Shift the start date of safety stock to the PTFDate instead of earlier.
+
+Consider MultipleQty rules:
+
+If demand later is small, large multiples may create leftover stock that looks like excess.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
 
 
 
