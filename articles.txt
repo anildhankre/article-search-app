@@ -2410,6 +2410,271 @@ If demand later is small, large multiples may create leftover stock that looks l
 
 
 ````````````````````````````````````````````````````````````````````````````````````````````````````````````
+In the 'Errors and Warnings' worksheet of the 'Data Import and Update log', an error appears stating that a duplicate record was ignored due to matching key values. This happens when multiple records in a data update have the same key, possibly due to:
+
+Duplicates in a single update file
+
+Duplicates across multiple data sources (e.g., SAP\Part.tab and SAP_ECC\Part.tab)
+
+Resolution Steps:
+
+Review the error details to locate the duplicate record and its key values.
+
+Identify the key fields using Data Source and Mapping information.
+
+Remove duplicate records from the extract file(s).
+
+Run each Data Source in separate update tasks if duplicates exist across sources.
+
+Re-run the update after cleaning the data.
+
+Investigate the source system to prevent future extraction of duplicate records.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Update worksheet filters to use Reviewed = 'N' instead of Reviewed = FALSE.
+
+``````````````````````````````````````````````````````````````````````````````````````````````````````
+
+push planning , DRP, Distribution planning
+
+
+🔎 What the Article Says in Simple Terms
+
+The issue:
+
+The system respects the lot size rule in total pushed quantity per day, but the individual push transfer orders are split oddly and don’t individually align with min/max/multiple lot size rules.
+
+Users expect aggregated transfers that directly match lot sizes.
+
+Instead, they see multiple transfers with "broken" quantities like decimals or weird numbers.
+
+The root cause:
+
+Push planning goes through three main splitting stages, which introduce these unusual numbers.
+
+The final pushed total (for that day) still respects the lot size rule, but the intermediate splits don’t.
+
+⚙️ The 3 Splitting Stages
+1. Final Constraint Consumption
+
+Configuration:
+
+ConstraintMinimumRule / ConstraintMultipleRule = MultiplePeriods
+
+Effect:
+
+Scheduled receipts (SRs) and planned orders are split across multiple periods.
+
+Instead of neat integers, the system may generate decimal quantities (e.g., 10973.95 instead of 10974).
+
+👉 Example:
+A planned order for 10,974 could be split as 10,973.05 + 0.95, due to period-based allocation.
+
+2. Supply Allotment to Demand for Push Parts
+
+Configuration:
+
+part.AllocationMultiple = 1
+
+Effect:
+
+Supplies that already have decimals are further split into:
+
+A whole number portion
+
+A fractional portion (<1)
+
+👉 Example:
+10973.95 gets split into:
+
+10973 (whole)
+
+0.95 (fractional)
+
+🔑 Proof: When the customer tested with part.AllocationMultiple = 0, the fractional (<1) push transfers disappeared.
+So, this stage is the reason why you sometimes see tiny orders like 0 or 1 unit transfers.
+
+3. Push Transfer Stage
+
+This is where Maestro decides how much to push out of the supply.
+
+Rules applied here:
+
+Don’t push more than excess supply.
+
+Push in multiples of the parent MultipleQty lot size.
+
+If needed, it splits supplies further to respect these conditions.
+
+👉 Example:
+
+Excess supply = 20,736 (on July 4, 2025).
+
+First supply processed = 10,973.95.
+
+System wants to push multiples of parent lot size.
+
+Rounded down multiple → 10,364.
+
+This required 3 splits:
+
+0.95
+
+10,363.05
+
+605.95
+
+Total = 10,973.95 ✅
+
+So, while the total is correct and respects multiples, the individual transfers look odd.
+
+📊 Why You See Weird Quantities like 0, 1, 384, 606
+
+0 or 1 → Comes from fractional split stage (AllocationMultiple = 1).
+
+384, 606, etc. → Comes from the push transfer stage where Maestro rounds to multiples and adjusts leftovers.
+
+Essentially:
+
+Decimal → split into whole + fractional
+
+Lot size rounding → creates uneven remainders
+
+Each remainder becomes its own push transfer
+
+So the "broken" looking transfers are just the byproduct of enforcing lot size + multiple + minimum rules across multiple stages.
+
+✅ Key Takeaways
+
+The total pushed per day always respects lot size (MultipleQty).
+
+The individual transfers may not, because they’re just split representations of original supplies.
+
+The splits happen due to:
+
+Constraint period splitting → decimals
+
+AllocationMultiple = 1 → whole vs fractional split
+
+Push transfer rules → rounding & remainder splits
+
+If you want fewer odd splits, you can test with:
+
+AllocationMultiple = 0 (removes fractional transfers).
+
+Adjusting constraint rules to reduce decimals.
+
+👉 Example in plain terms:
+It’s like you want to ship boxes of 12 bottles (lot size = 12).
+
+First, your stock is split into 12.95 bottles (weird decimal).
+
+Then, it’s further split into 12 + 0.95.
+
+Then, when pushing, the system only ships multiples of 12, so it ships 12, leaving a 0.95 remainder.
+
+Result: You see shipments of 12 and 0.95 — but total shipped is correct.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````
+
+The sorting criteria for Onhand in CTP are as follows:
+
+ 
+
+1. If the part is subject to expiry: Estimated Expiry Date
+
+2. If the part does not expire: Onhand Date
+
+3. Unit Cost
+
+4. Quantity
+
+5. Location
+
+6. Warehouse
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Access to the Heartbeat logs within the Embedded Algorithm Details and Log is required.
+
+Article Resolution
+At this time, customers will not be grated access to the heartbeat logs, their use in intended for Kinaxis teams only.
+
+The Embedded Algorithm logs will be available to Kinaxis customers from Maestro version SU 2508.
+
+````````````````````````````````````````````````````````````````````````````````````````````````````
+
+Kinaxis acronym list, short forms
+https://knowledge.kinaxis.com/s/kinaxis-acronym-list?t=1549900472597
+
+```````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
+
+Article Summary
+Data changes made within scenarios are not being tracked as expected. As a result, the following worksheets in the Scenario Properties window appear blank:
+
+Data Changes (Pending Commits)
+Pending Updates
+Pending Update Conflicting Changes
+Inherited Data Changes
+ 
+
+This issue prevents users from viewing and managing data change activity within affected scenarios.
+
+ 
+
+Cause
+Here are some limitations that would explain why the changes are not being tracked
+
+Information is displayed on the Pending Updates and Pending Update Conflicting Changes tabs only if you have access to the scenario's parent.
+In most cases, data changes made using automated processes, such as workbook commands, aren't listed in the Data Changes (Pending Commits) tab. If automated processes have been used to update data, a summary of the changes appears in the activity log (available on the General tab of the scenario properties).
+Changes older than a certain age (45 days by default, but this number can be changed by an administrator) are not shown on the Data Changes (Pending Commits), Pending Updates, or Inherited Data Changes tabs. Conflicting changes are always shown no matter when the changes were made.
+These tabs might not be able to display data for a scenario with thousands of changes, due to memory limits. In this case, your Maestro Administrator can adjust the limit.
+Changes to tables containing vector set data aren't tracked.
+ 
+
+Another reason may be the automatic deletion of Data Change Records has been disabled, which would automatically disable change tracking.
+
+```````````````````````````````````````````````````````````````````````````````````````
+
+Article Summary
+Unable to track the data changes made using a DataChange_Local table based worksheet. While the results are achievable using DataChange table based worksheet.
+
+ 
+
+Cause
+The DataChange_Local store the records for the data changes made in the specific scenario while the DataChange table store the records for data changes made in the specific scenario, data changes commit from the its child scenario, or data change made from its parent scenario. 
+
+````````````````````````````````````````````````````````````
+
+Article Summary
+Unable to track the data changes made using a DataChange_Local table based worksheet. While the results are achievable using DataChange table based worksheet.
+
+ 
+
+Cause
+The DataChange_Local store the records for the data changes made in the specific scenario while the DataChange table store the records for data changes made in the specific scenario, data changes commit from the its child scenario, or data change made from its parent scenario. 
+
+````````````````````````````````````````````````````````````````````
+
+Administrators noted that inserts and deletes performed by workbook commands were missing in the DataChange table.
+
+
+Cause
+By default, workbook commands do not capture insert or delete operations unless the Log data changes option is enabled.
+Without this setting, only specific modify actions may be recorded in the DataChange table.
+
+
+Article Resolution
+Enabling Log data changes for workbook commands ensures that inserts, deletes, and modifies are tracked in the DataChange table.
+By enabling this checkbox, Maestro will be placed under additional performance stress that may negatively impact overall system performance.
+
+```````````````````````````````````````````````````````````````````````````````````````````````````
+
+
 
 
 
