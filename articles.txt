@@ -2675,6 +2675,57 @@ By enabling this checkbox, Maestro will be placed under additional performance s
 ```````````````````````````````````````````````````````````````````````````````````````````````````
 
 
+DATES
+
+🎯 Maestro Date Values Summary
+
+Dates are tied to manufacturing events (order placement, shipping, dock arrival, stocking).
+
+🛒 1. Placing an Order (8 dates)
+
+🔹 AvailableStartDate – Start date considering materials + capacity.
+🔹 CalcStartDate – When order was/should be started.
+🔹 MaterialStartDate – Earliest start based on component availability.
+🔹 StartDate – Date to release to vendor / start production.
+🔹 EffStartDate – Based on EffDueDate + StartDate.
+🔹 SupplyStartDate – Start date of supply generation.
+
+🚚 2. Shipping an Order (2 dates)
+
+🔹 ShipDate – Planned ship date.
+🔹 ShipDateTime – Exact ship date & time.
+
+🏭 3. Arrival at Dock (5 dates)
+
+🔹 DeliveryDateTime – Scheduled dock arrival (date + time).
+🔹 DockDate – Planned dock delivery date.
+🔹 EffDockDate – Maestro-calculated dock date.
+🔹 ReschedDockDate – Rescheduled dock date.
+🔹 RecommendedDockDate – Recommended dock date.
+
+📦 4. Stocking an Order (10+ dates)
+
+🔹 AvailableDate – When items are ready for use.
+🔹 MaterialAvailableDate – Based on MaterialStartDate.
+🔹 FirstAvailableDate – First portion availability date.
+🔹 NeedDate – Needed for on-time delivery.
+🔹 SupplyAvailableDate – Immediate supply availability.
+🔹 DueDate – Order available/needed date.
+🔹 ReschedDate – Revised stock date.
+🔹 RecommendedDate – Suggested stock date.
+🔹 DemandDate – First demand date fulfilled by this supply.
+🔹 PTFDate – Planning Time Fence date for order generation.
+
+`````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+The ParameterDate field is found on both the PlannedOrder and ScheduledReceipt tables. For planned orders, the ParameterDate is typically set to the order's due date. For scheduled receipts, the ParameterDate is typically set to either the input DueDate (for non-reschedulable receipts) or to the calculated ReschedDate (for reschedulable receipts).
+
+To determine which time-phased lead time record(s) should apply to a given supply, the supply's ParameterDate is compared against the EffectiveInDate on the records pertaining to a given part source and source . The record in each table with the closest EffectiveInDate value that is on or before the ParameterDate is then used.
+
+
+````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````````
+
+
 
 
 
